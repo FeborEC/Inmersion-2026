@@ -795,6 +795,137 @@ def _silenciar_errores_recursos(html):
     return html
 
 
+def _fondo_animado(html):
+    """Agrega un efecto continuo y tenue al fondo gris del proyecto: unos orbes
+    de luz muy suaves (verde, turquesa, azul de Febor) que se desplazan y
+    laten MUY lento detrás del contenido. Sutil, tranquilo y futurista, sin
+    distraer. Solo es decorativo (pointer-events:none) y va detrás de todo.
+    Idempotente."""
+
+    if 'data-fondo-anim' in html:
+        print("  [info] fondo animado: ya estaba aplicado")
+        return html
+
+    # 1) El contenedor raíz necesita position:relative y overflow:hidden para
+    #    contener los orbes detrás del contenido.
+    ancla_estilo = '--cardmin:200px;'
+    if ancla_estilo in html:
+        html = html.replace(
+            ancla_estilo,
+            '--cardmin:200px; position:relative; overflow:hidden;', 1)
+
+    # 2) Capa de orbes, insertada al inicio del contenido (detrás de todo).
+    capa = (
+        '\\">\\n  <div data-fondo-anim=\\"\\" aria-hidden=\\"true\\" '
+        'style=\\"position:absolute; inset:0; z-index:0; overflow:hidden; '
+        'pointer-events:none;\\">'
+        '<div style=\\"position:absolute; width:46vw; height:46vw; '
+        'top:-8vw; left:-6vw; border-radius:50%; '
+        'background:radial-gradient(circle at center, '
+        'rgba(43,182,115,.16), rgba(43,182,115,0) 70%); '
+        'filter:blur(34px); animation:fondoFlota1 26s ease-in-out infinite;\\">'
+        '<\\u002Fdiv>'
+        '<div style=\\"position:absolute; width:40vw; height:40vw; '
+        'top:18vw; right:-8vw; border-radius:50%; '
+        'background:radial-gradient(circle at center, '
+        'rgba(47,123,224,.13), rgba(47,123,224,0) 70%); '
+        'filter:blur(38px); animation:fondoFlota2 32s ease-in-out infinite;\\">'
+        '<\\u002Fdiv>'
+        '<div style=\\"position:absolute; width:34vw; height:34vw; '
+        'bottom:-10vw; left:32vw; border-radius:50%; '
+        'background:radial-gradient(circle at center, '
+        'rgba(27,181,159,.12), rgba(27,181,159,0) 70%); '
+        'filter:blur(36px); animation:fondoFlota3 38s ease-in-out infinite;\\">'
+        '<\\u002Fdiv>'
+        '<\\u002Fdiv>\\n\\n  <!-- HEADER -->'
+    )
+    ancla_header = '\\">\\n\\n  <!-- HEADER -->'
+    if ancla_header in html:
+        html = html.replace(ancla_header, capa, 1)
+
+    # 3) Keyframes de desplazamiento lento (junto a los demás).
+    kf_ancla = ('@keyframes febor-shine-text { 0% { background-position: 0% 50%; } '
+                '100% { background-position: 200% 50%; } }')
+    if kf_ancla in html and '@keyframes fondoFlota1' not in html:
+        kf = (kf_ancla +
+              '\\n@keyframes fondoFlota1 { 0%,100% { transform:translate(0,0) '
+              'scale(1); opacity:.9; } 50% { transform:translate(4vw,3vw) '
+              'scale(1.12); opacity:1; } }'
+              '\\n@keyframes fondoFlota2 { 0%,100% { transform:translate(0,0) '
+              'scale(1); opacity:.85; } 50% { transform:translate(-3vw,4vw) '
+              'scale(1.1); opacity:1; } }'
+              '\\n@keyframes fondoFlota3 { 0%,100% { transform:translate(0,0) '
+              'scale(1); opacity:.8; } 50% { transform:translate(3vw,-3vw) '
+              'scale(1.15); opacity:.95; } }')
+        html = html.replace(kf_ancla, kf, 1)
+
+    print("  [ok] fondo animado tenue agregado (orbes suaves)")
+    return html
+
+
+def _reorganizar_mapa(html):
+    """Despeja el visor del Mapa del lugar: quita la insignia 'Vista 360°' y
+    saca los dos botones (Google Maps y pantalla completa) de ENCIMA del tour,
+    poniéndolos en una fila limpia DEBAJO del visor. Así el tour 360° se ve sin
+    elementos propios encima. (Los controles internos del tour son de panorapp
+    y no se pueden tocar.) Idempotente."""
+
+    if 'data-maprow' in html:
+        print("  [info] reorganización del mapa: ya estaba aplicada")
+        return html
+
+    # 1) Quitar la insignia 'Vista 360° en vivo'
+    insignia = ('<div style=\\"position:absolute; top:15px; left:15px; '
+                'display:flex; align-items:center; gap:7px; '
+                'background:rgba(255,255,255,.85); backdrop-filter:blur(6px); '
+                'padding:6px 11px; border-radius:30px; font-size:11px; '
+                'font-weight:700; color:#2c3e52; box-shadow:0 2px 7px '
+                'rgba(0,0,0,.14);\\">\\n            <span style=\\"width:8px; '
+                'height:8px; border-radius:50%; background:#2bb673; '
+                'box-shadow:0 0 0 3px rgba(43,182,115,.25);\\"><\\u002Fspan>'
+                'Vista 360° en vivo\\n          <\\u002Fdiv>\\n          ')
+    if insignia in html:
+        html = html.replace(insignia, '', 1)
+
+    # 2) Quitar los botones de ENCIMA del visor (overlay absolute)
+    i = html.find('<div style=\\"position:absolute; top:13px; right:13px; '
+                  'display:flex; gap:8px;\\">')
+    if i >= 0:
+        fin = html.find('{{ icoExpand }}<\\u002Fa>\\n          <\\u002Fdiv>', i)
+        if fin >= 0:
+            fin += len('{{ icoExpand }}<\\u002Fa>\\n          <\\u002Fdiv>')
+            html = html[:i] + html[fin:]
+
+    # 3) Insertar una fila limpia de botones DEBAJO del visor (antes del info)
+    info_anchor = ('<div style=\\"margin-top:15px; display:flex; '
+                   'flex-direction:column; gap:11px; font-size:12.5px; '
+                   'color:var(--muted);\\">')
+    fila = (
+        '<div data-maprow=\\"\\" style=\\"margin-top:14px; display:flex; '
+        'gap:10px; flex-wrap:wrap;\\">'
+        '<a href=\\"https://maps.app.goo.gl/RfNBkPRYtGgqfAZf7\\" target=\\"_blank\\" '
+        'rel=\\"noopener\\" style=\\"flex:1; min-width:150px; display:flex; '
+        'align-items:center; justify-content:center; gap:8px; padding:11px 14px; '
+        'border-radius:13px; background:var(--base); box-shadow:var(--raise); '
+        'color:#2bb673; font-weight:700; font-size:13px; text-decoration:none;\\" '
+        'style-active=\\"box-shadow:var(--inset);\\">{{ icoMap }} Ver en Google Maps'
+        '<\\u002Fa>'
+        '<a href=\\"https://360.panorapp.com/colsubsidio/alcaravan/\\" '
+        'target=\\"_blank\\" rel=\\"noopener\\" style=\\"flex:1; min-width:150px; '
+        'display:flex; align-items:center; justify-content:center; gap:8px; '
+        'padding:11px 14px; border-radius:13px; background:var(--base); '
+        'box-shadow:var(--raise); color:#2c3e52; font-weight:700; font-size:13px; '
+        'text-decoration:none;\\" style-active=\\"box-shadow:var(--inset);\\">'
+        '{{ icoExpand }} Pantalla completa<\\u002Fa>'
+        '<\\u002Fdiv>\\n        ')
+    if info_anchor in html:
+        html = html.replace(info_anchor, fila + info_anchor, 1)
+        print("  [ok] mapa reorganizado (insignia fuera, botones en fila inferior)")
+    else:
+        print("  [!!] reorganización del mapa: no se halló el punto de inserción")
+    return html
+
+
 def _ocultar_pantalla_carga(html):
     """Pantalla de carga: reemplaza la 'F' por el logo de Febor (sin recuadro
     de fondo) y oculta el aviso 'Unpacking...'. El logo va embebido en base64
@@ -885,70 +1016,77 @@ def _tinte_modulos(html):
 
 
 def _barra_scroll_movil(html):
-    """Hace visible una barra de desplazamiento lateral en Recursos y Docentes
-    en celular, para que la persona sepa que puede deslizar. iOS oculta la barra
-    nativa, así que se marca cada lista con data-scrollvis y se le aplica una
-    barra webkit personalizada SIEMPRE visible (track + thumb) dentro de la
-    media query de 600px. Idempotente."""
+    """Barra de desplazamiento SIEMPRE visible en celular para Recursos y
+    Docentes. iOS oculta la barra nativa pase lo que pase, así que se crea una
+    barra propia (overlay) con JavaScript: un riel + un indicador que está
+    siempre presente y se mueve al deslizar. Solo se activa en móvil (<=600px).
+    Idempotente."""
 
-    if 'data-scrollvis' in html:
-        print("  [info] barra de scroll móvil: ya estaba aplicada")
+    if 'data-scrollvis' not in html:
+        # marcar las listas (por si no estaban marcadas)
+        doc_ancla = ('data-scroll=\\"\\" style=\\"display:grid; '
+                     'grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); '
+                     'gap:10px; max-height:360px; overflow-y:auto;')
+        rec_ancla = ('data-scroll=\\"\\" style=\\"overflow-y:auto; max-height:408px; '
+                     'padding:14px 14px; border-radius:14px; box-shadow:var(--inset);')
+        for ancla in [doc_ancla, rec_ancla]:
+            if ancla in html:
+                html = html.replace(
+                    ancla, ancla.replace('data-scroll=\\"\\"',
+                                         'data-scroll=\\"\\" data-scrollvis=\\"\\"', 1), 1)
+
+    if 'feborScrollbars' in html:
+        print("  [info] barra de scroll móvil (JS): ya estaba aplicada")
         return html
 
-    cambios = 0
-    # Marcar las dos listas con data-scrollvis (Docentes y Recursos)
-    doc_ancla = ('data-scroll=\\"\\" style=\\"display:grid; '
-                 'grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); '
-                 'gap:10px; max-height:360px; overflow-y:auto;')
-    rec_ancla = ('data-scroll=\\"\\" style=\\"overflow-y:auto; max-height:408px; '
-                 'padding:14px 14px; border-radius:14px; box-shadow:var(--inset);')
-    for ancla in [doc_ancla, rec_ancla]:
-        if ancla in html:
-            html = html.replace(
-                ancla, ancla.replace('data-scroll=\\"\\"',
-                                     'data-scroll=\\"\\" data-scrollvis=\\"\\"', 1), 1)
-            cambios += 1
-
-    # CSS: barra siempre visible en móvil, scoped a data-scrollvis.
-    ancla_media = ('@media (max-width: 600px) {\\n  [data-mod-grid] '
-                   '{ grid-template-columns: 1fr !important; }\\n  '
-                   '[data-lower-grid] { grid-template-columns: 1fr !important; }')
-    if ancla_media in html and 'scrollvis-css' not in html:
-        css = (ancla_media + '\\n  /* scrollvis-css */\\n'
-               '  [data-scrollvis] { -webkit-overflow-scrolling:touch; }\\n'
-               '  [data-scrollvis]::-webkit-scrollbar { width:10px !important; '
-               '-webkit-appearance:none; }\\n'
-               '  [data-scrollvis]::-webkit-scrollbar-track { '
-               'background:rgba(120,130,150,.12) !important; border-radius:10px; '
-               'margin:4px 0; }\\n'
-               '  [data-scrollvis]::-webkit-scrollbar-thumb { '
-               'background:linear-gradient(180deg,#22d3a8,#1bb59f 30%,'
-               '#2f7be0 65%,#7a5cc7) !important; background-size:100% 220% '
-               '!important; border-radius:10px; border:2px solid transparent; '
-               'background-clip:padding-box; min-height:40px; '
-               'box-shadow:0 0 8px rgba(43,181,159,.55), '
-               'inset 0 0 4px rgba(255,255,255,.4); '
-               'animation:scrollFlow 3.5s ease-in-out infinite; }\\n'
-               '  [data-scrollvis]::-webkit-scrollbar-thumb:hover { '
-               'box-shadow:0 0 12px rgba(47,123,224,.7), '
-               'inset 0 0 5px rgba(255,255,255,.5); }')
-        html = html.replace(ancla_media, css, 1)
-        cambios += 1
-
-    # Keyframe del flujo de color de la barra (junto a los demás keyframes).
-    kf_ancla = ('@keyframes febor-shine-text { 0% { background-position: 0% 50%; } '
-                '100% { background-position: 200% 50%; } }')
-    if kf_ancla in html and '@keyframes scrollFlow' not in html:
-        kf_nuevo = (kf_ancla +
-                    '\\n@keyframes scrollFlow { 0% { background-position:50% 0%; } '
-                    '50% { background-position:50% 100%; } '
-                    '100% { background-position:50% 0%; } }')
-        html = html.replace(kf_ancla, kf_nuevo, 1)
-
-    if cambios >= 2:
-        print("  [ok] barra de scroll visible en móvil (Recursos y Docentes)")
+    # Script de barra personalizada SIEMPRE visible (una sola línea, sin saltos).
+    js = (
+        "<script>(function(){function feborScrollbars(){"
+        "if(window.innerWidth>600)return;"
+        "var ls=document.querySelectorAll('[data-scrollvis]');"
+        "ls.forEach(function(el){"
+        "if(el.__fsb)return; el.__fsb=true;"
+        "el.style.scrollbarWidth='none';"
+        "el.style.position=el.style.position||'relative';"
+        "var par=el;"
+        "if(getComputedStyle(par).position==='static'){par.style.position='relative';}"
+        "var track=document.createElement('div');"
+        "track.style.cssText='position:absolute;top:6px;bottom:6px;right:3px;width:7px;"
+        "border-radius:6px;background:rgba(120,130,150,.16);z-index:50;pointer-events:none;';"
+        "var thumb=document.createElement('div');"
+        "thumb.style.cssText='position:absolute;left:0;width:7px;border-radius:6px;"
+        "background:linear-gradient(180deg,#22d3a8,#1bb59f 40%,#2f7be0 75%,#7a5cc7);"
+        "background-size:100% 240%;box-shadow:0 0 7px rgba(43,181,159,.6);"
+        "transition:top .05s linear;animation:scrollFlow 3.5s ease-in-out infinite;';"
+        "track.appendChild(thumb);"
+        "var host=el.parentNode;"
+        "if(getComputedStyle(host).position==='static'){host.style.position='relative';}"
+        "host.appendChild(track);"
+        "function upd(){"
+        "var sh=el.scrollHeight,ch=el.clientHeight;"
+        "if(sh<=ch+2){track.style.display='none';return;}track.style.display='block';"
+        "var th=Math.max(28,ch*ch/sh);"
+        "var tr=track.clientHeight;"
+        "var max=el.scrollTop/(sh-ch);"
+        "thumb.style.height=th+'px';"
+        "thumb.style.top=(max*(tr-th))+'px';}"
+        "el.addEventListener('scroll',upd,{passive:true});"
+        "if(window.ResizeObserver){new ResizeObserver(upd).observe(el);}"
+        "setTimeout(upd,60);setTimeout(upd,400);upd();"
+        "});}"
+        "var t=setInterval(feborScrollbars,500);"
+        "setTimeout(function(){clearInterval(t);},6000);"
+        "window.addEventListener('resize',feborScrollbars);"
+        "document.addEventListener('DOMContentLoaded',feborScrollbars);"
+        "feborScrollbars();})();<\\u002Fscript>"
+    )
+    ancla = '<\\u002Fscript>\\n\\n\\n<\\u002Fbody><\\u002Fhtml>'
+    nuevo = '<\\u002Fscript>\\n' + js + '\\n\\n<\\u002Fbody><\\u002Fhtml>'
+    if ancla in html:
+        html = html.replace(ancla, nuevo, 1)
+        print("  [ok] barra de scroll SIEMPRE visible en móvil (JS, Recursos y Docentes)")
     else:
-        print(f"  [!!] barra de scroll móvil: solo {cambios} cambios")
+        print("  [!!] barra de scroll móvil: no se halló el punto de inserción")
     return html
 
 
@@ -999,7 +1137,10 @@ def _animar_burbujas(html):
                 '\\n@keyframes bubblePop { 0% { transform:scale(1); } '
                 '35% { transform:scale(1.22) rotate(-3deg); } '
                 '65% { transform:scale(.94) rotate(2deg); } '
-                '100% { transform:scale(1) rotate(0); } }')
+                '100% { transform:scale(1) rotate(0); } }'
+                '\\n@keyframes scrollFlow { 0% { background-position:50% 0%; } '
+                '50% { background-position:50% 100%; } '
+                '100% { background-position:50% 0%; } }')
     if kf_ancla in html:
         html = html.replace(kf_ancla, kf_nuevo, 1)
         cambios += 1
@@ -1477,6 +1618,10 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _tinte_modulos(html)
     # Ocultar la pantalla de carga (F / Unpacking)
     html = _ocultar_pantalla_carga(html)
+    # Reorganizar el Mapa del lugar (despejar el visor)
+    html = _reorganizar_mapa(html)
+    # Fondo animado tenue (orbes suaves)
+    html = _fondo_animado(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
     # Reordenar secciones solo en celular
