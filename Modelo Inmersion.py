@@ -5,7 +5,7 @@
  FEBOR · Inmersión 2026 — Generador del buscador documental y de actas
 ============================================================================
 
-Este script NO reescribe tu aplicativo. Tu 'Inmersion 2026.html' es un
+Este script NO reescribe tu aplicativo. Tu 'index.html' es un
 bundle autocontenido (diseño + PDFs embebidos en base64). Lo que hace este
 script es REGENERAR los bloques de datos que tu HTML ya consume y volverlos
 a inyectar en su sitio, conservando intacto todo tu diseño.
@@ -24,7 +24,7 @@ Pasos:
   2. Extrae texto, calcula el índice (frecuencias) -> docIdxB64
   3. Embebe cada PDF en base64 -> <id>B64
   4. Lee 'Relación de Actas Consejo.xlsx' (solo la RELACIÓN) -> actasB64
-  5. Inyecta todo dentro de 'Inmersion 2026.html' (queda listo para publicar).
+  5. Inyecta todo dentro de 'index.html' (queda listo para publicar).
   6. Publica en GitHub (git add / commit / push).
 
 Requisitos:  pip install pypdf openpyxl
@@ -71,7 +71,7 @@ CARPETA_INTERN  = "4. Normas_Internas"
 CARPETAS = [CARPETA_LEYES, CARPETA_CBCF, CARPETA_JURID, CARPETA_INTERN]
 
 EXCEL_ACTAS = "Relación de Actas Consejo.xlsx"
-HTML_FILE   = "Inmersion 2026.html"
+HTML_FILE   = "index.html"
 
 # ---------------------------------------------------------------------------
 #  CATÁLOGO DE DOCUMENTOS
