@@ -795,6 +795,57 @@ def _silenciar_errores_recursos(html):
     return html
 
 
+def _quitar_infografias(html):
+    """Elimina por completo el código de las infografías ocultas (ya inactivas):
+    (1) el bloque de datos/procesamiento en JS (objeto 'infografias', sus
+    handlers .dl, el bucle infoMap) -> se reemplaza por un objeto vacío para no
+    romper las referencias; (2) el panel modal 'infoSel' del template (la UI que
+    podría mostrarse). Tras esto no queda nada de infografías que se pueda
+    activar. Idempotente."""
+
+    import re
+    quitados = 0
+
+    # Guarda de idempotencia: si el panel ya no está y el objeto está vacío.
+    if ('{{ infoSel }}' not in html) and ('const infografias = {};' in html):
+        print("  [info] infografías: ya estaban eliminadas")
+        return html
+
+    # (1) Bloque JS: desde 'const infografias = {' hasta 'const infoSel ='
+    js_ini = html.find('const infografias = {')
+    js_fin = html.find('const infoSel = this.state.infoId ? '
+                        'infografias[this.state.infoId] : null;')
+    if js_ini >= 0 and js_fin > js_ini and 'const infografias = {};' not in html:
+        html = (html[:js_ini] + 'const infografias = {};\\n    '
+                + html[js_fin:])
+        quitados += 1
+
+    # (2) Panel template: el sc-if value="{{ infoSel }}" completo (balanceado)
+    p_ini = html.find('<sc-if value=\\"{{ infoSel }}\\"')
+    if p_ini >= 0:
+        depth = 0
+        p_fin = None
+        for m in re.finditer(r'<sc-if\b|<\\u002Fsc-if>', html[p_ini:p_ini + 14000]):
+            if m.group(0) == '<sc-if':
+                depth += 1
+            else:
+                depth -= 1
+                if depth == 0:
+                    p_fin = p_ini + m.end()
+                    break
+        if p_fin:
+            html = html[:p_ini] + html[p_fin:]
+            quitados += 1
+
+    if quitados == 2:
+        print("  [ok] infografías ocultas eliminadas (JS + panel)")
+    elif quitados == 1:
+        print("  [ok] infografías: una parte eliminada (revisar la otra)")
+    else:
+        print("  [info] infografías: ya estaban eliminadas o no se hallaron")
+    return html
+
+
 def _pulso_dias(html):
     """Da un efecto continuo (latido suave de brillo) a los días clicables de la
     jornada (20-25) en el cronograma, para que se note que se puede dar clic.
@@ -1663,6 +1714,8 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _fondo_animado(html)
     # Quitar los puntos de los días del cronograma
     html = _quitar_puntos_dias(html)
+    # Eliminar por completo las infografías ocultas
+    html = _quitar_infografias(html)
     # Pulso continuo en los días clicables del cronograma
     html = _pulso_dias(html)
     # Mejoras para la vista en celular (viewport + padding)
