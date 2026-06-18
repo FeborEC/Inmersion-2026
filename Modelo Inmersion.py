@@ -822,20 +822,20 @@ def _fondo_animado(html):
         '<div style=\\"position:absolute; width:46vw; height:46vw; '
         'top:-8vw; left:-6vw; border-radius:50%; '
         'background:radial-gradient(circle at center, '
-        'rgba(43,182,115,.16), rgba(43,182,115,0) 70%); '
-        'filter:blur(34px); animation:fondoFlota1 26s ease-in-out infinite;\\">'
+        'rgba(43,182,115,.28), rgba(43,182,115,0) 70%); '
+        'filter:blur(34px); animation:fondoFlota1 18s ease-in-out infinite;\\">'
         '<\\u002Fdiv>'
         '<div style=\\"position:absolute; width:40vw; height:40vw; '
         'top:18vw; right:-8vw; border-radius:50%; '
         'background:radial-gradient(circle at center, '
-        'rgba(47,123,224,.13), rgba(47,123,224,0) 70%); '
-        'filter:blur(38px); animation:fondoFlota2 32s ease-in-out infinite;\\">'
+        'rgba(47,123,224,.24), rgba(47,123,224,0) 70%); '
+        'filter:blur(38px); animation:fondoFlota2 22s ease-in-out infinite;\\">'
         '<\\u002Fdiv>'
         '<div style=\\"position:absolute; width:34vw; height:34vw; '
         'bottom:-10vw; left:32vw; border-radius:50%; '
         'background:radial-gradient(circle at center, '
-        'rgba(27,181,159,.12), rgba(27,181,159,0) 70%); '
-        'filter:blur(36px); animation:fondoFlota3 38s ease-in-out infinite;\\">'
+        'rgba(27,181,159,.22), rgba(27,181,159,0) 70%); '
+        'filter:blur(36px); animation:fondoFlota3 26s ease-in-out infinite;\\">'
         '<\\u002Fdiv>'
         '<\\u002Fdiv>\\n\\n  <!-- HEADER -->'
     )
@@ -848,15 +848,18 @@ def _fondo_animado(html):
                 '100% { background-position: 200% 50%; } }')
     if kf_ancla in html and '@keyframes fondoFlota1' not in html:
         kf = (kf_ancla +
-              '\\n@keyframes fondoFlota1 { 0%,100% { transform:translate(0,0) '
-              'scale(1); opacity:.9; } 50% { transform:translate(4vw,3vw) '
-              'scale(1.12); opacity:1; } }'
-              '\\n@keyframes fondoFlota2 { 0%,100% { transform:translate(0,0) '
-              'scale(1); opacity:.85; } 50% { transform:translate(-3vw,4vw) '
-              'scale(1.1); opacity:1; } }'
-              '\\n@keyframes fondoFlota3 { 0%,100% { transform:translate(0,0) '
-              'scale(1); opacity:.8; } 50% { transform:translate(3vw,-3vw) '
-              'scale(1.15); opacity:.95; } }')
+              '\\n@keyframes fondoFlota1 { 0% { transform:translate(0,0) '
+              'scale(1); } 33% { transform:translate(9vw,6vw) scale(1.18); } '
+              '66% { transform:translate(5vw,11vw) scale(1.05); } '
+              '100% { transform:translate(0,0) scale(1); } }'
+              '\\n@keyframes fondoFlota2 { 0% { transform:translate(0,0) '
+              'scale(1); } 33% { transform:translate(-8vw,7vw) scale(1.2); } '
+              '66% { transform:translate(-11vw,-4vw) scale(1.08); } '
+              '100% { transform:translate(0,0) scale(1); } }'
+              '\\n@keyframes fondoFlota3 { 0% { transform:translate(0,0) '
+              'scale(1); } 33% { transform:translate(7vw,-8vw) scale(1.22); } '
+              '66% { transform:translate(-5vw,-5vw) scale(1.1); } '
+              '100% { transform:translate(0,0) scale(1); } }')
         html = html.replace(kf_ancla, kf, 1)
 
     print("  [ok] fondo animado tenue agregado (orbes suaves)")
