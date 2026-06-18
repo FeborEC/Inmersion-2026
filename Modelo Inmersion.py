@@ -331,11 +331,21 @@ def construir_seccion(sec):
 
         try:
             reader = PdfReader(str(pdf))
-            text = " ".join((pg.extract_text() or "") for pg in reader.pages)
+            paginas = [(pg.extract_text() or "") for pg in reader.pages]
         except Exception as e:
             print(f"  [error] no se pudo leer {pdf.name}: {e}")
-            text = ""
-        text = re.sub(r"\s+", " ", text).strip()
+            paginas = []
+
+        # Normalizar cada página y unir con un espacio, registrando en qué
+        # offset (carácter) TERMINA cada página -> permite ubicar la página de
+        # cada coincidencia en el buscador. 'pages' = lista de offsets de fin.
+        partes, pages_off, acc = [], [], 0
+        for pg_txt in paginas:
+            limpio = re.sub(r"\s+", " ", pg_txt).strip()
+            partes.append(limpio)
+            acc += len(limpio) + 1   # +1 por el espacio separador
+            pages_off.append(acc)
+        text = " ".join(partes).strip()
 
         freq = Counter(
             w for w in re.findall(r"[a-zñ]{5,}", fold(text)) if w not in STOP
@@ -346,7 +356,8 @@ def construir_seccion(sec):
                 gfreq[w] += n
                 gdocs.setdefault(w, set()).add(doc_id)
 
-        docs.append({"id": doc_id, "title": title, "text": text, "top": top})
+        docs.append({"id": doc_id, "title": title, "text": text,
+                     "top": top, "pages": pages_off})
         files_b64[pdf.name] = base64.b64encode(pdf.read_bytes()).decode("ascii")
         items.append({"name": title, "fname": pdf.name, "key": pdf.name})
         print(f"  [ok] {sec['grupo'][:28]:<28} {idx}: {title[:42]}")
@@ -780,49 +791,92 @@ def _silenciar_errores_recursos(html):
     return html
 
 
+def _agregar_pagina_snippets(html):
+    """Agrega el número de página a cada resultado del buscador. El índice
+    ahora incluye 'pages' (offsets de fin de página por documento); aquí se
+    calcula, para cada coincidencia, en qué página cae y se antepone una
+    etiqueta 'Pág. N' al fragmento. Idempotente."""
+
+    if "snippetPagina" in html:
+        print("  [info] número de página en resultados: ya estaba aplicado")
+        return html
+
+    ancla = ("return React.createElement('span', null, pre, "
+             "React.createElement('mark', { style: { background: '#fde68a', "
+             "color: '#1b2330', borderRadius: '3px', padding: '0 2px', "
+             "fontWeight: 700 } }, mid), post);")
+
+    nuevo = (
+        "var snippetPagina = 0; "
+        "try { var __pg = doc.pages; if (__pg && __pg.length) { "
+        "while (snippetPagina < __pg.length && p >= __pg[snippetPagina]) snippetPagina++; "
+        "snippetPagina = snippetPagina + 1; } } catch (_) { snippetPagina = 0; } "
+        "var __chip = snippetPagina ? React.createElement('span', "
+        "{ style: { display: 'inline-block', background: '#eaf2fe', color: "
+        "'#2f7be0', borderRadius: '20px', padding: '1px 9px', fontSize: '11px', "
+        "fontWeight: 800, marginRight: '8px', whiteSpace: 'nowrap', "
+        "verticalAlign: 'middle' } }, 'Pág. ' + snippetPagina) : null; "
+        "return React.createElement('span', null, __chip, pre, "
+        "React.createElement('mark', { style: { background: '#fde68a', "
+        "color: '#1b2330', borderRadius: '3px', padding: '0 2px', "
+        "fontWeight: 700 } }, mid), post);"
+    )
+
+    if ancla in html:
+        html = html.replace(ancla, nuevo, 1)
+        print("  [ok] número de página agregado a los resultados del buscador")
+    else:
+        print("  [info] número de página: no se halló el punto de inserción")
+    return html
+
+
 def _reordenar_movil(html):
     """Reordena las secciones SOLO en celular (<=600px), sin alterar el diseño
     de escritorio. Orden en móvil:
        Mapa -> Cronograma -> Docentes -> Módulos -> Recursos -> Certificado.
-    Técnica: en móvil las dos rejillas (pg-grid y lower-grid) pasan a
-    display:contents (se 'aplanan'), el contenedor principal se vuelve flex en
-    columna, y cada sección recibe un 'order'. Se etiqueta cada sección con
-    data-mobi y se agrega la CSS correspondiente. Idempotente."""
+    Técnica: el contenedor raíz del aplicativo (min-height:100vh) se marca con
+    data-mobiroot. En móvil ese contenedor se vuelve flex en columna, las dos
+    rejillas internas (pg-grid y lower-grid) pasan a display:contents para que
+    sus secciones suban al mismo nivel, y cada sección recibe un 'order'.
+    Idempotente."""
 
-    if 'data-mobi=' in html:
+    if 'data-mobiroot' in html:
         print("  [info] reordenamiento móvil: ya estaba aplicado")
         return html
 
-    # Etiquetar cada sección con data-mobi (order deseado en móvil)
-    etiquetas = [
-        # (ancla, atributo a insertar tras '<div ')
-        ('<div data-mod-grid=\\"\\"',       'data-mobi=\\"4\\" '),   # Módulos
-        ('<div data-pg-grid=\\"\\"',        'data-pgflat=\\"\\" '),  # contenedor
-        ('<div data-lower-grid=\\"\\"',     'data-lowflat=\\"\\" '), # contenedor
-    ]
-    for ancla, attr in etiquetas:
+    # 1) Marcar el contenedor RAÍZ (único) con data-mobiroot.
+    raiz = '<div style=\\"min-height:100vh; --base:#e9ecf1;'
+    if raiz in html:
+        html = html.replace(raiz, '<div data-mobiroot=\\"\\" ' + raiz[5:], 1)
+    else:
+        print("  [!!] reordenamiento móvil: no se halló el contenedor raíz.")
+        return html
+
+    # 2) Marcar las dos rejillas para aplanarlas en móvil.
+    for ancla, attr in [
+        ('<div data-pg-grid=\\"\\"',   'data-pgflat=\\"\\" '),
+        ('<div data-lower-grid=\\"\\"', 'data-lowflat=\\"\\" '),
+    ]:
         if ancla in html:
-            nuevo = ancla.replace('<div ', '<div ' + attr, 1)
-            html = html.replace(ancla, nuevo, 1)
+            html = html.replace(ancla, '<div ' + attr + ancla[5:], 1)
 
-    # Recursos (panel): order 5
+    # 3) Etiquetar cada sección con data-mobi (order deseado).
+    # Módulos = mod-grid (order 4)
+    if '<div data-mod-grid=\\"\\"' in html:
+        html = html.replace('<div data-mod-grid=\\"\\"',
+                            '<div data-mobi=\\"4\\" data-mod-grid=\\"\\"', 1)
+    # Recursos (panel) = order 5
     rec_ancla = ('<div style=\\"background:var(--base); border-radius:var(--r); '
-                 'box-shadow:var(--raise); padding:22px; display:flex; '
-                 'flex-d')
+                 'box-shadow:var(--raise); padding:22px; display:flex; flex-d')
     if rec_ancla in html:
-        html = html.replace(
-            rec_ancla,
-            '<div data-mobi=\\"5\\" ' + rec_ancla[5:], 1)
-
-    # Docentes (order 3), Cronograma (2), Certificado (6), Mapa/RIGHT COLUMN (1)
-    # Se etiqueta el primer <div tras cada comentario de sección.
-    comentarios = [
-        ('<!-- DOCENTES -->',           '3'),
+        html = html.replace(rec_ancla, '<div data-mobi=\\"5\\" ' + rec_ancla[5:], 1)
+    # Docentes(3), Cronograma(2), Certificado(6), Mapa/RIGHT COLUMN(1)
+    for com, orden in [
+        ('<!-- DOCENTES -->',              '3'),
         ('<!-- CRONOGRAMA + CLAUSURA -->', '2'),
-        ('<!-- CERTIFICADO -->',        '6'),
-        ('<!-- RIGHT COLUMN -->',       '1'),
-    ]
-    for com, orden in comentarios:
+        ('<!-- CERTIFICADO -->',           '6'),
+        ('<!-- RIGHT COLUMN -->',          '1'),
+    ]:
         pos = html.find(com)
         if pos < 0:
             continue
@@ -832,21 +886,22 @@ def _reordenar_movil(html):
         html = (html[:divpos] + '<div data-mobi=\\"' + orden + '\\" '
                 + html[divpos + 5:])
 
-    # CSS: dentro de la media query de 600px, aplanar rejillas y aplicar order.
+    # 4) CSS dentro de la media query de 600px, TODO scoping al contenedor raíz.
     ancla_media = ('@media (max-width: 600px) {\\n  [data-mod-grid] '
                    '{ grid-template-columns: 1fr !important; }\\n  '
                    '[data-lower-grid] { grid-template-columns: 1fr !important; }')
     if ancla_media in html and 'data-mobi-css' not in html:
         css = (ancla_media + '\\n  /* data-mobi-css */\\n'
-               '  [style*=\\"max-width:1000px\\"] { display:flex !important; '
+               '  [data-mobiroot] { display:flex !important; '
                'flex-direction:column !important; }\\n'
-               '  [data-pgflat], [data-lowflat] { display:contents !important; }\\n'
-               '  [data-mobi=\\"1\\"] { order:1 !important; }\\n'
-               '  [data-mobi=\\"2\\"] { order:2 !important; }\\n'
-               '  [data-mobi=\\"3\\"] { order:3 !important; }\\n'
-               '  [data-mobi=\\"4\\"] { order:4 !important; }\\n'
-               '  [data-mobi=\\"5\\"] { order:5 !important; }\\n'
-               '  [data-mobi=\\"6\\"] { order:6 !important; }')
+               '  [data-mobiroot] [data-pgflat], '
+               '[data-mobiroot] [data-lowflat] { display:contents !important; }\\n'
+               '  [data-mobiroot] [data-mobi=\\"1\\"] { order:1 !important; }\\n'
+               '  [data-mobiroot] [data-mobi=\\"2\\"] { order:2 !important; }\\n'
+               '  [data-mobiroot] [data-mobi=\\"3\\"] { order:3 !important; }\\n'
+               '  [data-mobiroot] [data-mobi=\\"4\\"] { order:4 !important; }\\n'
+               '  [data-mobiroot] [data-mobi=\\"5\\"] { order:5 !important; }\\n'
+               '  [data-mobiroot] [data-mobi=\\"6\\"] { order:6 !important; }')
         html = html.replace(ancla_media, css, 1)
 
     print("  [ok] secciones reordenadas para celular "
@@ -1173,6 +1228,8 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _quitar_scroll_doble(html)
     # Acordeón: documentos colapsados, clic para desplegar
     html = _acordeon_resultados(html)
+    # Número de página en cada resultado del buscador
+    html = _agregar_pagina_snippets(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
     # Reordenar secciones solo en celular
