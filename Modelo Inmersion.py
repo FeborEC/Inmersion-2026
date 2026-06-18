@@ -976,7 +976,10 @@ def _reordenar_movil(html):
                '  [data-mobiroot] [data-mobi=\\"5\\"] { order:5 !important; }\\n'
                '  [data-mobiroot] [data-mobi=\\"6\\"] { order:6 !important; }\\n'
                '  [data-mobiroot] [data-mobi] { width:100% !important; '
-               'align-self:stretch !important; box-sizing:border-box !important; }')
+               'align-self:stretch !important; box-sizing:border-box !important; }\\n'
+               '  [data-mod-grid] { gap:26px !important; }\\n'
+               '  [data-mobiroot] [data-mobi], [data-mod-grid] > * { '
+               'margin-bottom:6px !important; }')
         html = html.replace(ancla_media, css, 1)
 
     print("  [ok] secciones reordenadas para celular "
