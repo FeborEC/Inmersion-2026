@@ -791,6 +791,41 @@ def _silenciar_errores_recursos(html):
     return html
 
 
+def _tinte_modulos(html):
+    """Da a la zona superior de cada módulo un tinte suave de SU propio color
+    (armonía), en vez del gris neutro. Cada tarjeta ya tiene una capa
+    'background:var(--mc); opacity:.045' (casi imperceptible) y un velo blanco
+    encima; se sube un poco el tinte de color y se suaviza el velo para que el
+    color se note de forma elegante. Idempotente."""
+
+    if "opacity:.13" in html and "modtint-done" in html:
+        print("  [info] tinte de módulos: ya estaba aplicado")
+        return html
+
+    cambios = 0
+    # Subir el tinte de color de la tarjeta (.045 -> .13)
+    tinte_old = 'background:var(--mc); opacity:.045;'
+    tinte_new = 'background:var(--mc); opacity:.13;'
+    if tinte_old in html:
+        html = html.replace(tinte_old, tinte_new, 1)
+        cambios += 1
+
+    # Suavizar el velo blanco para que el color se asome
+    velo_old = ('background:linear-gradient(135deg, rgba(255,255,255,.5), '
+                'rgba(255,255,255,.34));')
+    velo_new = ('background:linear-gradient(135deg, rgba(255,255,255,.40), '
+                'rgba(255,255,255,.24)); /* modtint-done */')
+    if velo_old in html:
+        html = html.replace(velo_old, velo_new, 1)
+        cambios += 1
+
+    if cambios == 2:
+        print("  [ok] tinte suave de color aplicado a los módulos")
+    else:
+        print(f"  [!!] tinte de módulos: solo {cambios}/2 cambios")
+    return html
+
+
 def _barra_scroll_movil(html):
     """Hace visible una barra de desplazamiento lateral en Recursos y Docentes
     en celular, para que la persona sepa que puede deslizar. iOS oculta la barra
@@ -1380,6 +1415,8 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _animar_burbujas(html)
     # Barra de scroll visible en móvil (Recursos y Docentes)
     html = _barra_scroll_movil(html)
+    # Tinte suave de color en los módulos
+    html = _tinte_modulos(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
     # Reordenar secciones solo en celular
