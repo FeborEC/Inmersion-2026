@@ -791,6 +791,65 @@ def _silenciar_errores_recursos(html):
     return html
 
 
+def _animar_burbujas(html):
+    """Agrega animaciones a las burbujas de términos del asistente:
+    - Entrada: aparecen con un 'pop' escalonado (cascada) al abrir el asistente.
+    - Selección: al hacer clic, la burbuja activa hace un rebote/pulso.
+    Toca el JS (agrega delay y anim por burbuja), el template (animation inline)
+    y la CSS (keyframes). Idempotente."""
+
+    if "bubbleIn" in html:
+        print("  [info] animación de burbujas: ya estaba aplicada")
+        return html
+
+    cambios = 0
+
+    # 1) JS: añadir delay escalonado y la animación (distinta si está activa).
+    js_ancla = ("return { w: g.w, label, size: (13 + t * 15).toFixed(1) + 'px', "
+                "op: (0.55 + t * 0.45).toFixed(2), active, fg, bgc, pick: () =>")
+    js_nuevo = ("var __d = (gi % 24) * 0.035; "
+                "var __anim = active ? 'bubblePop .45s cubic-bezier(.34,1.56,.64,1) both' "
+                ": ('bubbleIn .42s cubic-bezier(.34,1.56,.64,1) ' + __d.toFixed(3) + 's both'); "
+                "return { w: g.w, label, size: (13 + t * 15).toFixed(1) + 'px', "
+                "op: (0.55 + t * 0.45).toFixed(2), active, fg, bgc, anim: __anim, pick: () =>")
+    if js_ancla in html:
+        html = html.replace(js_ancla, js_nuevo, 1)
+        cambios += 1
+
+    # 2) Template: agregar animation:{{ b.anim }} a la burbuja.
+    tpl_ancla = ('font-size:{{ b.size }}; transition:transform .15s ease;\\" '
+                 'style-hover=\\"transform:translateY(-2px);\\" '
+                 'style-active=\\"box-shadow:var(--inset);\\">{{ b.label }}')
+    tpl_nuevo = ('font-size:{{ b.size }}; transition:transform .15s ease; '
+                 'animation:{{ b.anim }};\\" '
+                 'style-hover=\\"transform:translateY(-2px);\\" '
+                 'style-active=\\"box-shadow:var(--inset);\\">{{ b.label }}')
+    if tpl_ancla in html:
+        html = html.replace(tpl_ancla, tpl_nuevo, 1)
+        cambios += 1
+
+    # 3) CSS: keyframes de entrada (pop) y de selección (rebote).
+    kf_ancla = ('@keyframes febor-shine-text { 0% { background-position: 0% 50%; } '
+                '100% { background-position: 200% 50%; } }')
+    kf_nuevo = (kf_ancla +
+                '\\n@keyframes bubbleIn { 0% { opacity:0; transform:scale(.5) '
+                'translateY(8px); } 60% { opacity:1; transform:scale(1.08); } '
+                '100% { opacity:1; transform:scale(1) translateY(0); } }'
+                '\\n@keyframes bubblePop { 0% { transform:scale(1); } '
+                '35% { transform:scale(1.22) rotate(-3deg); } '
+                '65% { transform:scale(.94) rotate(2deg); } '
+                '100% { transform:scale(1) rotate(0); } }')
+    if kf_ancla in html:
+        html = html.replace(kf_ancla, kf_nuevo, 1)
+        cambios += 1
+
+    if cambios == 3:
+        print("  [ok] animación de burbujas agregada (entrada + selección)")
+    else:
+        print(f"  [!!] animación de burbujas: solo {cambios}/3 cambios")
+    return html
+
+
 def _agregar_pagina_snippets(html):
     """Agrega el número de página a cada resultado del buscador. El índice
     ahora incluye 'pages' (offsets de fin de página por documento); aquí se
@@ -834,17 +893,16 @@ def _reordenar_movil(html):
     """Reordena las secciones SOLO en celular (<=600px), sin alterar el diseño
     de escritorio. Orden en móvil:
        Mapa -> Cronograma -> Docentes -> Módulos -> Recursos -> Certificado.
-    Técnica: el contenedor raíz del aplicativo (min-height:100vh) se marca con
-    data-mobiroot. En móvil ese contenedor se vuelve flex en columna, las dos
-    rejillas internas (pg-grid y lower-grid) pasan a display:contents para que
-    sus secciones suban al mismo nivel, y cada sección recibe un 'order'.
-    Idempotente."""
+    El contenedor raíz se vuelve flex en columna y TODOS los contenedores
+    intermedios (pg-grid, lower-grid, el wrapper de cronograma+certificado y el
+    de la columna derecha del mapa) pasan a display:contents para que cada
+    sección sea hija directa del flujo y su 'order' funcione. Idempotente."""
 
     if 'data-mobiroot' in html:
         print("  [info] reordenamiento móvil: ya estaba aplicado")
         return html
 
-    # 1) Marcar el contenedor RAÍZ (único) con data-mobiroot.
+    # 1) Contenedor RAÍZ (único)
     raiz = '<div style=\\"min-height:100vh; --base:#e9ecf1;'
     if raiz in html:
         html = html.replace(raiz, '<div data-mobiroot=\\"\\" ' + raiz[5:], 1)
@@ -852,15 +910,22 @@ def _reordenar_movil(html):
         print("  [!!] reordenamiento móvil: no se halló el contenedor raíz.")
         return html
 
-    # 2) Marcar las dos rejillas para aplanarlas en móvil.
-    for ancla, attr in [
-        ('<div data-pg-grid=\\"\\"',   'data-pgflat=\\"\\" '),
-        ('<div data-lower-grid=\\"\\"', 'data-lowflat=\\"\\" '),
-    ]:
+    # 2) Marcar TODOS los contenedores intermedios a aplanar (data-flat).
+    flats = [
+        '<div data-pg-grid=\\"\\"',
+        '<div data-lower-grid=\\"\\"',
+        # wrapper que agrupa Cronograma + Certificado
+        ('<div style=\\"display:flex; flex-direction:column; gap:18px; '
+         'align-self:flex-start;\\">'),
+        # wrapper de la columna derecha (Mapa)
+        ('<div style=\\"display:flex; flex-direction:column; gap:24px; '
+         'height:100%;\\">'),
+    ]
+    for ancla in flats:
         if ancla in html:
-            html = html.replace(ancla, '<div ' + attr + ancla[5:], 1)
+            html = html.replace(ancla, '<div data-flat=\\"\\" ' + ancla[5:], 1)
 
-    # 3) Etiquetar cada sección con data-mobi (order deseado).
+    # 3) Etiquetar cada SECCIÓN (la tarjeta real) con data-mobi (order).
     # Módulos = mod-grid (order 4)
     if '<div data-mod-grid=\\"\\"' in html:
         html = html.replace('<div data-mod-grid=\\"\\"',
@@ -870,12 +935,12 @@ def _reordenar_movil(html):
                  'box-shadow:var(--raise); padding:22px; display:flex; flex-d')
     if rec_ancla in html:
         html = html.replace(rec_ancla, '<div data-mobi=\\"5\\" ' + rec_ancla[5:], 1)
-    # Docentes(3), Cronograma(2), Certificado(6), Mapa/RIGHT COLUMN(1)
+    # Docentes(3), Cronograma(2), Certificado(6), Mapa(1):
+    # se etiqueta la PRIMERA tarjeta tras cada comentario.
     for com, orden in [
         ('<!-- DOCENTES -->',              '3'),
-        ('<!-- CRONOGRAMA + CLAUSURA -->', '2'),
         ('<!-- CERTIFICADO -->',           '6'),
-        ('<!-- RIGHT COLUMN -->',          '1'),
+        ('<!-- MAPA -->',                  '1'),
     ]:
         pos = html.find(com)
         if pos < 0:
@@ -886,7 +951,16 @@ def _reordenar_movil(html):
         html = (html[:divpos] + '<div data-mobi=\\"' + orden + '\\" '
                 + html[divpos + 5:])
 
-    # 4) CSS dentro de la media query de 600px, TODO scoping al contenedor raíz.
+    # Cronograma: tras el comentario va el wrapper (ya marcado data-flat) y luego
+    # la tarjeta real -> etiquetar la SEGUNDA apertura de div (la tarjeta).
+    pos = html.find('<!-- CRONOGRAMA + CLAUSURA -->')
+    if pos >= 0:
+        d1 = html.find('<div ', pos)            # wrapper (data-flat)
+        d2 = html.find('<div ', d1 + 5)         # tarjeta cronograma
+        if d2 >= 0:
+            html = (html[:d2] + '<div data-mobi=\\"2\\" ' + html[d2 + 5:])
+
+    # 4) CSS dentro de la media query de 600px, scoping al contenedor raíz.
     ancla_media = ('@media (max-width: 600px) {\\n  [data-mod-grid] '
                    '{ grid-template-columns: 1fr !important; }\\n  '
                    '[data-lower-grid] { grid-template-columns: 1fr !important; }')
@@ -894,14 +968,15 @@ def _reordenar_movil(html):
         css = (ancla_media + '\\n  /* data-mobi-css */\\n'
                '  [data-mobiroot] { display:flex !important; '
                'flex-direction:column !important; }\\n'
-               '  [data-mobiroot] [data-pgflat], '
-               '[data-mobiroot] [data-lowflat] { display:contents !important; }\\n'
+               '  [data-mobiroot] [data-flat] { display:contents !important; }\\n'
                '  [data-mobiroot] [data-mobi=\\"1\\"] { order:1 !important; }\\n'
                '  [data-mobiroot] [data-mobi=\\"2\\"] { order:2 !important; }\\n'
                '  [data-mobiroot] [data-mobi=\\"3\\"] { order:3 !important; }\\n'
                '  [data-mobiroot] [data-mobi=\\"4\\"] { order:4 !important; }\\n'
                '  [data-mobiroot] [data-mobi=\\"5\\"] { order:5 !important; }\\n'
-               '  [data-mobiroot] [data-mobi=\\"6\\"] { order:6 !important; }')
+               '  [data-mobiroot] [data-mobi=\\"6\\"] { order:6 !important; }\\n'
+               '  [data-mobiroot] [data-mobi] { width:100% !important; '
+               'align-self:stretch !important; box-sizing:border-box !important; }')
         html = html.replace(ancla_media, css, 1)
 
     print("  [ok] secciones reordenadas para celular "
@@ -1230,6 +1305,8 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _acordeon_resultados(html)
     # Número de página en cada resultado del buscador
     html = _agregar_pagina_snippets(html)
+    # Animación de las burbujas (entrada + selección)
+    html = _animar_burbujas(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
     # Reordenar secciones solo en celular
