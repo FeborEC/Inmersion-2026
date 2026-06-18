@@ -791,6 +791,74 @@ def _silenciar_errores_recursos(html):
     return html
 
 
+def _barra_scroll_movil(html):
+    """Hace visible una barra de desplazamiento lateral en Recursos y Docentes
+    en celular, para que la persona sepa que puede deslizar. iOS oculta la barra
+    nativa, así que se marca cada lista con data-scrollvis y se le aplica una
+    barra webkit personalizada SIEMPRE visible (track + thumb) dentro de la
+    media query de 600px. Idempotente."""
+
+    if 'data-scrollvis' in html:
+        print("  [info] barra de scroll móvil: ya estaba aplicada")
+        return html
+
+    cambios = 0
+    # Marcar las dos listas con data-scrollvis (Docentes y Recursos)
+    doc_ancla = ('data-scroll=\\"\\" style=\\"display:grid; '
+                 'grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); '
+                 'gap:10px; max-height:360px; overflow-y:auto;')
+    rec_ancla = ('data-scroll=\\"\\" style=\\"overflow-y:auto; max-height:408px; '
+                 'padding:14px 14px; border-radius:14px; box-shadow:var(--inset);')
+    for ancla in [doc_ancla, rec_ancla]:
+        if ancla in html:
+            html = html.replace(
+                ancla, ancla.replace('data-scroll=\\"\\"',
+                                     'data-scroll=\\"\\" data-scrollvis=\\"\\"', 1), 1)
+            cambios += 1
+
+    # CSS: barra siempre visible en móvil, scoped a data-scrollvis.
+    ancla_media = ('@media (max-width: 600px) {\\n  [data-mod-grid] '
+                   '{ grid-template-columns: 1fr !important; }\\n  '
+                   '[data-lower-grid] { grid-template-columns: 1fr !important; }')
+    if ancla_media in html and 'scrollvis-css' not in html:
+        css = (ancla_media + '\\n  /* scrollvis-css */\\n'
+               '  [data-scrollvis] { -webkit-overflow-scrolling:touch; }\\n'
+               '  [data-scrollvis]::-webkit-scrollbar { width:10px !important; '
+               '-webkit-appearance:none; }\\n'
+               '  [data-scrollvis]::-webkit-scrollbar-track { '
+               'background:rgba(120,130,150,.12) !important; border-radius:10px; '
+               'margin:4px 0; }\\n'
+               '  [data-scrollvis]::-webkit-scrollbar-thumb { '
+               'background:linear-gradient(180deg,#22d3a8,#1bb59f 30%,'
+               '#2f7be0 65%,#7a5cc7) !important; background-size:100% 220% '
+               '!important; border-radius:10px; border:2px solid transparent; '
+               'background-clip:padding-box; min-height:40px; '
+               'box-shadow:0 0 8px rgba(43,181,159,.55), '
+               'inset 0 0 4px rgba(255,255,255,.4); '
+               'animation:scrollFlow 3.5s ease-in-out infinite; }\\n'
+               '  [data-scrollvis]::-webkit-scrollbar-thumb:hover { '
+               'box-shadow:0 0 12px rgba(47,123,224,.7), '
+               'inset 0 0 5px rgba(255,255,255,.5); }')
+        html = html.replace(ancla_media, css, 1)
+        cambios += 1
+
+    # Keyframe del flujo de color de la barra (junto a los demás keyframes).
+    kf_ancla = ('@keyframes febor-shine-text { 0% { background-position: 0% 50%; } '
+                '100% { background-position: 200% 50%; } }')
+    if kf_ancla in html and '@keyframes scrollFlow' not in html:
+        kf_nuevo = (kf_ancla +
+                    '\\n@keyframes scrollFlow { 0% { background-position:50% 0%; } '
+                    '50% { background-position:50% 100%; } '
+                    '100% { background-position:50% 0%; } }')
+        html = html.replace(kf_ancla, kf_nuevo, 1)
+
+    if cambios >= 2:
+        print("  [ok] barra de scroll visible en móvil (Recursos y Docentes)")
+    else:
+        print(f"  [!!] barra de scroll móvil: solo {cambios} cambios")
+    return html
+
+
 def _animar_burbujas(html):
     """Agrega animaciones a las burbujas de términos del asistente:
     - Entrada: aparecen con un 'pop' escalonado (cascada) al abrir el asistente.
@@ -1310,6 +1378,8 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _agregar_pagina_snippets(html)
     # Animación de las burbujas (entrada + selección)
     html = _animar_burbujas(html)
+    # Barra de scroll visible en móvil (Recursos y Docentes)
+    html = _barra_scroll_movil(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
     # Reordenar secciones solo en celular
