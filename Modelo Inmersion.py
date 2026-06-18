@@ -795,74 +795,110 @@ def _silenciar_errores_recursos(html):
     return html
 
 
-def _fondo_animado(html):
-    """Agrega un efecto continuo y tenue al fondo gris del proyecto: unos orbes
-    de luz muy suaves (verde, turquesa, azul de Febor) que se desplazan y
-    laten MUY lento detrás del contenido. Sutil, tranquilo y futurista, sin
-    distraer. Solo es decorativo (pointer-events:none) y va detrás de todo.
+def _pulso_dias(html):
+    """Da un efecto continuo (latido suave de brillo) a los días clicables de la
+    jornada (20-25) en el cronograma, para que se note que se puede dar clic.
+    Añade animation al estilo de la celda activa no seleccionada y define el
+    keyframe. Idempotente."""
+
+    if 'pulseDia' in html:
+        print("  [info] pulso de días: ya estaba aplicado")
+        return html
+
+    # Añadir animation al estilo del día clicable.
+    ancla = ("cursor: 'pointer', background: 'var(--base)', color: cfg.color, "
+             "boxShadow: 'var(--raise)' }")
+    nuevo = ("cursor: 'pointer', background: 'var(--base)', color: cfg.color, "
+             "boxShadow: 'var(--raise)', animation: 'pulseDia 2.4s ease-in-out "
+             "infinite' }")
+    if ancla in html:
+        html = html.replace(ancla, nuevo, 1)
+
+    # Keyframe del latido (brillo de color que aparece y desaparece).
+    kf_ancla = ('@keyframes febor-shine-text { 0% { background-position: 0% 50%; } '
+                '100% { background-position: 200% 50%; } }')
+    if kf_ancla in html and '@keyframes pulseDia' not in html:
+        kf = (kf_ancla +
+              '\\n@keyframes pulseDia { 0%,100% { box-shadow:var(--raise); } '
+              '50% { box-shadow:0 4px 14px rgba(47,123,224,.35), var(--raise); } }')
+        html = html.replace(kf_ancla, kf, 1)
+        print("  [ok] pulso continuo en los días clicables del cronograma")
+    else:
+        print("  [info] pulso de días: keyframe ya existía o no se halló")
+    return html
+
+
+def _quitar_puntos_dias(html):
+    """Quita los puntitos de color que aparecían debajo de los números de los
+    días de la jornada (20-25) en el cronograma. Eran un span decorativo dentro
+    de cada celda activa del calendario; se elimina y queda solo el número.
     Idempotente."""
+
+    punto = ("React.createElement('span', { key: 'd', style: { position: "
+             "'absolute', bottom: '5px', width: '5px', height: '5px', "
+             "borderRadius: '50%', background: cfg.color } }),")
+    if punto in html:
+        html = html.replace(punto, "", 1)
+        print("  [ok] puntos de los días del cronograma quitados")
+    else:
+        print("  [info] puntos de los días: ya estaban quitados o no se hallaron")
+    return html
+
+
+def _fondo_animado(html):
+    """Fondo con destellos blancos pequeños (tipo partículas/estrellas) que
+    titilan suave y continuamente detrás de los cuadros. Tenue y tranquilo, solo
+    decorativo (pointer-events:none), detrás de todo. Idempotente."""
 
     if 'data-fondo-anim' in html:
         print("  [info] fondo animado: ya estaba aplicado")
         return html
 
-    # 1) El contenedor raíz necesita position:relative y overflow:hidden para
-    #    contener los orbes detrás del contenido.
+    # 1) El contenedor raíz necesita position:relative y overflow:hidden.
     ancla_estilo = '--cardmin:200px;'
     if ancla_estilo in html:
         html = html.replace(
             ancla_estilo,
             '--cardmin:200px; position:relative; overflow:hidden;', 1)
 
-    # 2) Capa de orbes, insertada al inicio del contenido (detrás de todo).
-    capa = (
-        '\\">\\n  <div data-fondo-anim=\\"\\" aria-hidden=\\"true\\" '
-        'style=\\"position:absolute; inset:0; z-index:0; overflow:hidden; '
-        'pointer-events:none;\\">'
-        '<div style=\\"position:absolute; width:46vw; height:46vw; '
-        'top:-8vw; left:-6vw; border-radius:50%; '
-        'background:radial-gradient(circle at center, '
-        'rgba(43,182,115,.28), rgba(43,182,115,0) 70%); '
-        'filter:blur(34px); animation:fondoFlota1 18s ease-in-out infinite;\\">'
-        '<\\u002Fdiv>'
-        '<div style=\\"position:absolute; width:40vw; height:40vw; '
-        'top:18vw; right:-8vw; border-radius:50%; '
-        'background:radial-gradient(circle at center, '
-        'rgba(47,123,224,.24), rgba(47,123,224,0) 70%); '
-        'filter:blur(38px); animation:fondoFlota2 22s ease-in-out infinite;\\">'
-        '<\\u002Fdiv>'
-        '<div style=\\"position:absolute; width:34vw; height:34vw; '
-        'bottom:-10vw; left:32vw; border-radius:50%; '
-        'background:radial-gradient(circle at center, '
-        'rgba(27,181,159,.22), rgba(27,181,159,0) 70%); '
-        'filter:blur(36px); animation:fondoFlota3 26s ease-in-out infinite;\\">'
-        '<\\u002Fdiv>'
-        '<\\u002Fdiv>\\n\\n  <!-- HEADER -->'
-    )
+    # 2) Generar muchos destellos blancos en posiciones pseudoaleatorias.
+    import random
+    rnd = random.Random(7)   # semilla fija -> resultado idéntico cada corrida
+    chispas = []
+    for i in range(46):
+        x = round(rnd.uniform(1, 99), 1)
+        y = round(rnd.uniform(1, 99), 1)
+        tam = round(rnd.uniform(2, 4.5), 1)         # px
+        dur = round(rnd.uniform(2.8, 6.5), 1)       # s (titileo)
+        delay = round(rnd.uniform(0, 6), 1)         # s
+        op = round(rnd.uniform(.35, .8), 2)         # brillo máx
+        chispas.append(
+            '<div style=\\"position:absolute; left:' + str(x) + '%; top:' + str(y)
+            + '%; width:' + str(tam) + 'px; height:' + str(tam) + 'px; '
+            'border-radius:50%; background:#ffffff; '
+            'box-shadow:0 0 ' + str(round(tam * 2, 1)) + 'px rgba(255,255,255,.9); '
+            '--op:' + str(op) + '; opacity:0; '
+            'animation:chispa ' + str(dur) + 's ease-in-out ' + str(delay)
+            + 's infinite;\\"><\\u002Fdiv>')
+
+    capa = ('\\">\\n  <div data-fondo-anim=\\"\\" aria-hidden=\\"true\\" '
+            'style=\\"position:absolute; inset:0; z-index:0; overflow:hidden; '
+            'pointer-events:none;\\">' + ''.join(chispas)
+            + '<\\u002Fdiv>\\n\\n  <!-- HEADER -->')
     ancla_header = '\\">\\n\\n  <!-- HEADER -->'
     if ancla_header in html:
         html = html.replace(ancla_header, capa, 1)
 
-    # 3) Keyframes de desplazamiento lento (junto a los demás).
+    # 3) Keyframe del titileo (aparecer y desaparecer suave).
     kf_ancla = ('@keyframes febor-shine-text { 0% { background-position: 0% 50%; } '
                 '100% { background-position: 200% 50%; } }')
-    if kf_ancla in html and '@keyframes fondoFlota1' not in html:
+    if kf_ancla in html and '@keyframes chispa' not in html:
         kf = (kf_ancla +
-              '\\n@keyframes fondoFlota1 { 0% { transform:translate(0,0) '
-              'scale(1); } 33% { transform:translate(9vw,6vw) scale(1.18); } '
-              '66% { transform:translate(5vw,11vw) scale(1.05); } '
-              '100% { transform:translate(0,0) scale(1); } }'
-              '\\n@keyframes fondoFlota2 { 0% { transform:translate(0,0) '
-              'scale(1); } 33% { transform:translate(-8vw,7vw) scale(1.2); } '
-              '66% { transform:translate(-11vw,-4vw) scale(1.08); } '
-              '100% { transform:translate(0,0) scale(1); } }'
-              '\\n@keyframes fondoFlota3 { 0% { transform:translate(0,0) '
-              'scale(1); } 33% { transform:translate(7vw,-8vw) scale(1.22); } '
-              '66% { transform:translate(-5vw,-5vw) scale(1.1); } '
-              '100% { transform:translate(0,0) scale(1); } }')
+              '\\n@keyframes chispa { 0%,100% { opacity:0; transform:scale(.6); } '
+              '50% { opacity:var(--op); transform:scale(1); } }')
         html = html.replace(kf_ancla, kf, 1)
 
-    print("  [ok] fondo animado tenue agregado (orbes suaves)")
+    print("  [ok] fondo con destellos blancos agregado")
     return html
 
 
@@ -1625,6 +1661,10 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _reorganizar_mapa(html)
     # Fondo animado tenue (orbes suaves)
     html = _fondo_animado(html)
+    # Quitar los puntos de los días del cronograma
+    html = _quitar_puntos_dias(html)
+    # Pulso continuo en los días clicables del cronograma
+    html = _pulso_dias(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
     # Reordenar secciones solo en celular
