@@ -717,31 +717,140 @@ def _compactar_cronograma(html):
 
 
 def _silenciar_errores_recursos(html):
-    """Evita el banner rojo '[bundle] error'. El bundle trae un capturador
-    global de errores que muestra CUALQUIER evento 'error' de la ventana,
-    incluidos los inofensivos por carga de recursos externos (el iframe del
-    tour 360°, imágenes, fuentes). Se filtra para que solo muestre errores
-    reales de JavaScript (los que tienen mensaje). Idempotente."""
-    OLD = (
+    """Desactiva el banner rojo '[bundle] error'. El bundle trae un capturador
+    global de errores que muestra en pantalla CUALQUIER evento 'error', incluso
+    inofensivos (iframe 360°, imágenes) y, en celular, errores reales pero
+    benignos al abrir/previsualizar PDFs. Ese banner es una herramienta de
+    depuración (no algo que el usuario final deba ver), así que se reemplaza el
+    capturador por uno que SOLO registra en consola, sin mostrar nada en
+    pantalla. Idempotente."""
+
+    NEW = (
+        "window.addEventListener('error', function(e) {\n"
+        "    try {\n"
+        "      var tgt = e && e.target;\n"
+        "      if (tgt && tgt !== window && (tgt.tagName === 'IMG' || tgt.tagName === 'IFRAME' || tgt.tagName === 'SCRIPT' || tgt.tagName === 'LINK' || tgt.src || tgt.href)) return;\n"
+        "      if (e && (e.message || e.error)) console.error('[bundle]', e.message || e.error);\n"
+        "    } catch (_) {}\n"
+        "  }, true);"
+    )
+
+    # marca para idempotencia
+    if "console.error('[bundle]'" in html:
+        print("  [info] banner de error: ya estaba desactivado")
+        return html
+
+    # Handler original (HTML recién subido, sin parches previos)
+    ORIG = (
         "window.addEventListener('error', function(e) {\n"
         "    var p = document.body || document.documentElement;\n"
         "    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));\n"
-        "    d.id = '__bundler_err';"
+        "    d.id = '__bundler_err';\n"
+        "    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';\n"
+        "    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +\n"
+        "      '[bundle] ' + (e.message || e.type) +\n"
+        "      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');\n"
+        "  }, true);"
     )
-    NEW = (
+
+    # Handler con el parche viejo (filtro), por si el HTML ya lo tenía
+    VIEJO = (
         "window.addEventListener('error', function(e) {\n"
         "    var tgt = e && e.target;\n"
         "    if (tgt && tgt !== window && (tgt.tagName === 'IMG' || tgt.tagName === 'IFRAME' || tgt.tagName === 'SCRIPT' || tgt.tagName === 'LINK' || tgt.src || tgt.href)) return;\n"
         "    if (!e.message) return;\n"
         "    var p = document.body || document.documentElement;\n"
         "    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));\n"
-        "    d.id = '__bundler_err';"
+        "    d.id = '__bundler_err';\n"
+        "    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';\n"
+        "    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +\n"
+        "      '[bundle] ' + (e.message || e.type) +\n"
+        "      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');\n"
+        "  }, true);"
     )
-    if OLD in html:
-        html = html.replace(OLD, NEW)
-        print("  [ok] banner '[bundle] error' silenciado (errores de recursos ignorados)")
+
+    if ORIG in html:
+        html = html.replace(ORIG, NEW, 1)
+        print("  [ok] banner '[bundle] error' desactivado (solo consola)")
+    elif VIEJO in html:
+        html = html.replace(VIEJO, NEW, 1)
+        print("  [ok] banner '[bundle] error' desactivado (solo consola)")
     else:
-        print("  [info] capturador de errores: ya estaba ajustado o no se halló")
+        print("  [info] capturador de errores: no se halló para ajustar")
+    return html
+
+
+def _reordenar_movil(html):
+    """Reordena las secciones SOLO en celular (<=600px), sin alterar el diseño
+    de escritorio. Orden en móvil:
+       Mapa -> Cronograma -> Docentes -> Módulos -> Recursos -> Certificado.
+    Técnica: en móvil las dos rejillas (pg-grid y lower-grid) pasan a
+    display:contents (se 'aplanan'), el contenedor principal se vuelve flex en
+    columna, y cada sección recibe un 'order'. Se etiqueta cada sección con
+    data-mobi y se agrega la CSS correspondiente. Idempotente."""
+
+    if 'data-mobi=' in html:
+        print("  [info] reordenamiento móvil: ya estaba aplicado")
+        return html
+
+    # Etiquetar cada sección con data-mobi (order deseado en móvil)
+    etiquetas = [
+        # (ancla, atributo a insertar tras '<div ')
+        ('<div data-mod-grid=\\"\\"',       'data-mobi=\\"4\\" '),   # Módulos
+        ('<div data-pg-grid=\\"\\"',        'data-pgflat=\\"\\" '),  # contenedor
+        ('<div data-lower-grid=\\"\\"',     'data-lowflat=\\"\\" '), # contenedor
+    ]
+    for ancla, attr in etiquetas:
+        if ancla in html:
+            nuevo = ancla.replace('<div ', '<div ' + attr, 1)
+            html = html.replace(ancla, nuevo, 1)
+
+    # Recursos (panel): order 5
+    rec_ancla = ('<div style=\\"background:var(--base); border-radius:var(--r); '
+                 'box-shadow:var(--raise); padding:22px; display:flex; '
+                 'flex-d')
+    if rec_ancla in html:
+        html = html.replace(
+            rec_ancla,
+            '<div data-mobi=\\"5\\" ' + rec_ancla[5:], 1)
+
+    # Docentes (order 3), Cronograma (2), Certificado (6), Mapa/RIGHT COLUMN (1)
+    # Se etiqueta el primer <div tras cada comentario de sección.
+    comentarios = [
+        ('<!-- DOCENTES -->',           '3'),
+        ('<!-- CRONOGRAMA + CLAUSURA -->', '2'),
+        ('<!-- CERTIFICADO -->',        '6'),
+        ('<!-- RIGHT COLUMN -->',       '1'),
+    ]
+    for com, orden in comentarios:
+        pos = html.find(com)
+        if pos < 0:
+            continue
+        divpos = html.find('<div ', pos)
+        if divpos < 0:
+            continue
+        html = (html[:divpos] + '<div data-mobi=\\"' + orden + '\\" '
+                + html[divpos + 5:])
+
+    # CSS: dentro de la media query de 600px, aplanar rejillas y aplicar order.
+    ancla_media = ('@media (max-width: 600px) {\\n  [data-mod-grid] '
+                   '{ grid-template-columns: 1fr !important; }\\n  '
+                   '[data-lower-grid] { grid-template-columns: 1fr !important; }')
+    if ancla_media in html and 'data-mobi-css' not in html:
+        css = (ancla_media + '\\n  /* data-mobi-css */\\n'
+               '  [style*=\\"max-width:1000px\\"] { display:flex !important; '
+               'flex-direction:column !important; }\\n'
+               '  [data-pgflat], [data-lowflat] { display:contents !important; }\\n'
+               '  [data-mobi=\\"1\\"] { order:1 !important; }\\n'
+               '  [data-mobi=\\"2\\"] { order:2 !important; }\\n'
+               '  [data-mobi=\\"3\\"] { order:3 !important; }\\n'
+               '  [data-mobi=\\"4\\"] { order:4 !important; }\\n'
+               '  [data-mobi=\\"5\\"] { order:5 !important; }\\n'
+               '  [data-mobi=\\"6\\"] { order:6 !important; }')
+        html = html.replace(ancla_media, css, 1)
+
+    print("  [ok] secciones reordenadas para celular "
+          "(mapa, cronograma, docentes, módulos, recursos, certificado)")
     return html
 
 
@@ -1066,6 +1175,8 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _acordeon_resultados(html)
     # Mejoras para la vista en celular (viewport + padding)
     html = _mejorar_movil(html)
+    # Reordenar secciones solo en celular
+    html = _reordenar_movil(html)
 
     # Escribir el HTML final sobre el mismo archivo (regenera en sitio).
     html_path.write_text(html, encoding="utf-8")
