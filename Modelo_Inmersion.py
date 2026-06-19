@@ -2582,6 +2582,51 @@ def _cronograma_panel_pc(html):
     return html
 
 
+def _responsive_movil_fix(html):
+    """Corrige SOLO la vista móvil, sin tocar escritorio:
+    1) La grilla de 'Docentes' pasa de 3 columnas a 1 sola columna en celular,
+       para que foto, nombre, cargo y 'Ver perfil' se vean completos y legibles.
+    2) La tarjeta 'Certificado de asistencia' se ubica al final de la página en
+       celular (después del módulo 6), reforzando su orden.
+    No cambia textos, colores, estilos ni lógica. Idempotente.
+    """
+    if 'movil-docentes-cert' in html:
+        print("  [info] responsive móvil: ya estaba aplicado")
+        return html
+
+    # 1) Marcar la grilla interna de Docentes (única con repeat(3,minmax(0,1fr))
+    #    y data-scrollvis) para poder colapsarla a 1 columna en móvil.
+    doc_anchor = ('<div data-scroll=\\"\\" data-scrollvis=\\"\\" style=\\"display:grid; '
+                  'grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px;')
+    if doc_anchor in html:
+        html = html.replace(
+            doc_anchor,
+            '<div data-docgrid=\\"\\" data-scroll=\\"\\" data-scrollvis=\\"\\" '
+            'style=\\"display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); '
+            'gap:12px;', 1)
+    else:
+        print("  [info] responsive móvil: no se halló la grilla de Docentes")
+
+    # 2) CSS móvil: Docentes a 1 columna; Certificado forzado al final.
+    css = (
+        '  /* movil-docentes-cert */\\n'
+        '  [data-docgrid] { grid-template-columns:1fr !important; '
+        'gap:12px !important; overflow:visible !important; max-height:none !important; }\\n'
+        '  [data-docgrid] > * { width:100% !important; min-width:0 !important; }\\n'
+        '  [data-mobiroot] [data-mobi=\\"6\\"] { order:99 !important; }\\n')
+
+    close = 'padding-right:16px !important; }\\n}'
+    if close in html:
+        html = html.replace(close, 'padding-right:16px !important; }\\n' + css + '}', 1)
+    else:
+        # respaldo: antes del cierre de la hoja de estilos
+        html = html.replace('<\\u002Fstyle>',
+                             '@media (max-width: 600px) {\\n' + css + '}\\n<\\u002Fstyle>', 1)
+
+    print("  [ok] móvil: Docentes en 1 columna; Certificado al final")
+    return html
+
+
 def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html_path = ROOT / HTML_FILE
     if not html_path.exists():
@@ -2667,6 +2712,7 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     # columna derecha en un único stack que estira). Va al final.
     html = _emparejar_grid_dom(html)
     html = _cronograma_panel_pc(html)
+    html = _responsive_movil_fix(html)
 
     # Escribir el HTML final sobre el mismo archivo (regenera en sitio).
     html_path.write_text(html, encoding="utf-8")
