@@ -873,14 +873,13 @@ def _nombres_fotos_modulos(html):
               "'05': [{ from: 'Malag', photo: ednaPhoto }, "
               "{ from: 'Vélez', photo: juanPhoto }], "
               "'06': [{ from: 'Fonseca', photo: dianaPhoto }] };")
-    fm_new = ("const flyMap = { '01': [{ from: 'Jord', photo: fabPhoto, name: 'Fabian' }], "
-              "'02': [{ from: 'Vélez', photo: juanPhoto, name: 'Juan Pablo' }], "
-              "'03': [{ from: 'Forero', photo: andresPhoto, name: 'Andrés' }], "
-              "'04': [{ from: 'Cort', photo: johanaPhoto, name: 'Johana' }, "
-              "{ from: 'Vélez', photo: juanPhoto, name: 'Juan Pablo' }], "
-              "'05': [{ from: 'Malag', photo: ednaPhoto, name: 'Edna' }, "
-              "{ from: 'Vélez', photo: juanPhoto, name: 'Juan Pablo' }], "
-              "'06': [{ from: 'Fonseca', photo: dianaPhoto, name: 'Diana' }] };")
+    fm_new = ("const flyMap = { '01': [{ from: 'Vélez', photo: juanPhoto, name: 'Juan Pablo' }], "
+              "'02': [{ from: 'Cort', photo: johanaPhoto, name: 'Johana' }], "
+              "'03': [{ from: 'Jord', photo: fabPhoto, name: 'Fabian' }], "
+              "'04': [{ from: 'Malag', photo: ednaPhoto, name: 'Edna' }], "
+              "'05': [{ from: 'Forero', photo: andresPhoto, name: 'Andrés' }], "
+              "'06': [{ from: 'Fonseca', photo: dianaPhoto, name: 'Diana M' }, "
+              "{ from: 'Christina', photo: dianaCPhoto, name: 'Diana C' }] };")
     if fm_old in html:
         html = html.replace(fm_old, fm_new, 1)
         cambios += 1
@@ -2521,7 +2520,6 @@ def inyectar_en_html(indice, blobs, secciones_data=None):
     html = _acordeon_resultados(html)
     # Número de página en cada resultado del buscador
     html = _agregar_pagina_snippets(html)
-    html = _abrir_en_pagina(html)
     # Animación de las burbujas (entrada + selección)
     html = _animar_burbujas(html)
     # Barra de scroll visible en móvil (Recursos y Docentes)
