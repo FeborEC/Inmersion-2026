@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ============================================================================
- FEBOR · Inmersión 2026 — Generador del buscador documental y de actas
+ FEBOR · Inmersión 2026 — Generador del buscador documental
 ============================================================================
 
 Este script NO reescribe tu aplicativo. Tu 'index.html' es un
@@ -12,7 +12,6 @@ a inyectar en su sitio, conservando intacto todo tu diseño.
 
 Bloques que regenera e inyecta dentro del HTML:
   · docIdxB64   -> índice de búsqueda  {docs:[{id,title,text,top}], global:[...]}
-  · actasB64    -> lista de actas      [{year,month,acta,fecha,sesion,temas}]
   · <id>B64     -> el PDF de cada documento embebido en base64
                    (cbcfB64, cbcf2B64..cbcf5B64, estatutoB64, codigoB64, eticaB64)
 
@@ -23,15 +22,14 @@ Pasos:
   1. Lee los PDF de las cuatro carpetas y los asocia a los IDs del aplicativo.
   2. Extrae texto, calcula el índice (frecuencias) -> docIdxB64
   3. Embebe cada PDF en base64 -> <id>B64
-  4. Lee 'Relación de Actas Consejo.xlsx' (solo la RELACIÓN) -> actasB64
   5. Inyecta todo dentro de 'index.html' (queda listo para publicar).
   6. Publica en GitHub (git add / commit / push).
 
-Requisitos:  pip install pypdf openpyxl
+Requisitos:  pip install pypdf
 
 NOTA: no usa IA. Solo extrae texto, cuenta palabras y arma el índice;
 es el mismo cálculo que hacía el aplicativo, pero en Python para que puedas
-regenerarlo al cambiar PDFs o actas.
+regenerarlo al cambiar PDFs.
 ============================================================================
 """
 
@@ -53,11 +51,6 @@ try:
 except ImportError:
     sys.exit("Falta pypdf:  pip install pypdf")
 
-try:
-    import openpyxl
-except ImportError:
-    sys.exit("Falta openpyxl:  pip install openpyxl")
-
 # ---------------------------------------------------------------------------
 # Rutas (TODO relativo a la raíz del proyecto, con pathlib)
 # ---------------------------------------------------------------------------
@@ -70,7 +63,6 @@ CARPETA_INTERN  = "4. Normas_Internas"
 
 CARPETAS = [CARPETA_LEYES, CARPETA_CBCF, CARPETA_JURID, CARPETA_INTERN]
 
-EXCEL_ACTAS = "Relación de Actas Consejo.xlsx"
 HTML_FILE   = "index.html"
 # Logo de Febor (PNG con fondo transparente) embebido en base64, para la
 # pantalla de carga. Se usa en _logo_pantalla_carga().
@@ -339,10 +331,9 @@ def construir_seccion(sec):
     pdfs.sort(key=clave_orden)
 
     for idx, pdf in enumerate(pdfs, 1):
-        if sec["formato"] == "juridico":
-            title = formato_titulo_juridico(pdf.stem)
-        else:
-            title = _formato_archivo(pdf.stem)
+        # Título = nombre EXACTO del archivo PDF, con su extensión, sin
+        # reformatear (en todas las secciones).
+        title = pdf.name
         doc_id = f"{sec['prefijo']}{idx}"
 
         try:
@@ -373,7 +364,8 @@ def construir_seccion(sec):
                 gdocs.setdefault(w, set()).add(doc_id)
 
         docs.append({"id": doc_id, "title": title, "text": text,
-                     "top": top, "pages": pages_off})
+                     "top": top, "pages": pages_off,
+                     "fname": pdf.name, "mapavar": sec["mapavar"]})
         files_b64[pdf.name] = base64.b64encode(pdf.read_bytes()).decode("ascii")
         items.append({"name": title, "fname": pdf.name, "key": pdf.name})
         print(f"  [ok] {sec['grupo'][:28]:<28} {idx}: {title[:42]}")
@@ -439,278 +431,6 @@ def _cap_inicial(s):
         if ch.isalpha():
             return s[:i] + ch.upper() + s[i + 1:]
     return s
-
-
-def _split_temas(valor):
-    """Separa los temas de una acta en una lista (un tema por elemento),
-    y deja cada tema con MAYÚSCULA inicial.
-
-    En el Excel los temas vienen pegados con guion. Se separan así,
-    PROTEGIENDO los guiones que son parte legítima del texto:
-      · rangos de años/números:  '2022-2026', '2026 - 2029'  -> NO se parten
-      · cédulas / numeraciones:  'CC. 73.105.747'             -> NO se parten
-      · prefijos:                'Pre-Aprobación', 'PRE-REGISTRO' -> NO se parten
-
-    Reglas de corte:
-      A) '.-'  (punto-guion)                          -> siempre separa
-      B) palabra/letra - palabra/letra                -> separa
-         (p.ej. 'enero-Aprobacion', 'informe-revisión')
-      C) número - MAYÚSCULA                           -> separa
-         (p.ej. '2026- ELECCION'), pero número-número NO (rango)
-      D) salto de línea, ';' y viñetas                -> separa
-    """
-    if valor is None:
-        return []
-    s = str(valor).strip()
-    if not s:
-        return []
-
-    SEP = "\u0001"  # marcador temporal
-    s = re.sub(r"\s*\n\s*", " ", s)        # unificar saltos de línea
-    s = re.sub(r"\s*\.\-\s*", SEP, s)      # A) '.-' siempre separa
-
-    # B y C) guion entre dos tokens (letras/números)
-    def _corte(m):
-        izq = m.group(1)         # palabra o número antes del guion
-        der = m.group(2)         # primer carácter después del guion
-        # rango numérico  dígito-dígito  -> NO cortar
-        if izq[-1].isdigit() and der.isdigit():
-            return m.group(0)
-        # prefijo legítimo (Pre-, Post-, ...) -> NO cortar
-        if izq.lower() in _PREFIJOS_NO_CORTAR:
-            return m.group(0)
-        # letra-letra  -> cortar
-        if izq[-1].isalpha() and der.isalpha():
-            return izq + SEP + der
-        # número-MAYÚSCULA  -> cortar
-        if izq[-1].isdigit() and der.isupper():
-            return izq + SEP + der
-        return m.group(0)
-
-    s = re.sub(
-        r"([A-Za-zÁÉÍÓÚáéíóúÑñ0-9]+)\s*\-\s*([A-Za-zÁÉÍÓÚáéíóúÑñ0-9])",
-        _corte, s,
-    )
-    s = re.sub(r"\s*[;•·]\s*", SEP, s)     # D) ';' y viñetas
-
-    # Unificar TODOS los temas en MAYÚSCULAS (para que no se vea desordenado:
-    # en el Excel unos vienen en mayúscula y otros en minúscula).
-    partes = [p.strip(" .-\t").upper() for p in s.split(SEP)]
-    return [p for p in partes if p]
-
-
-#
-# El Excel tiene UNA HOJA POR AÑO, con formatos distintos:
-#   · "AÑO 2021"  -> encabezado en otra fila; columnas: No. ACTA | TEMA
-#                    (sin fecha ni sesión; un tema por fila, el número se repite)
-#   · "AÑO 2022"  -> FECHA | No. ACTA | TEMA (algunas fechas vacías)
-#   · "ACTAS 2023/2024/2025/2026" -> FECHA | No. ACTA | SESION | TEMA
-# Se omite "RESOLUCIONES 2023" (son resoluciones, no actas).
-#
-# Hojas de actas a procesar (resto se omite automáticamente):
-HOJAS_ACTAS = [
-    "AÑO 2021", "AÑO 2022",
-    "ACTAS 2023", "ACTAS 2024", "ACTAS 2025", "ACTAS 2026",
-]
-
-
-def _detectar_encabezado(rows):
-    """Encuentra la fila de encabezado real: la que tiene la columna TEMA
-    junto a la columna de número de acta (evita la fila de título)."""
-    for i, r in enumerate(rows):
-        celdas = [_norm_header(c) for c in r if c not in (None, "")]
-        tiene_tema = any("tema" in c or "asunto" in c for c in celdas)
-        tiene_acta = any(("acta" in c or c.strip() in ("no.", "no")) for c in celdas)
-        if tiene_tema and tiene_acta:
-            return i
-    return None
-
-
-def construir_actas():
-    xlsx_path = ROOT / EXCEL_ACTAS
-    if not xlsx_path.exists():
-        print(f"  [aviso] no se encontró '{EXCEL_ACTAS}'. Se omiten actas.")
-        return []
-
-    wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
-
-    # Diccionario ordenado: clave (año, acta) -> registro agrupado.
-    # Así, si un mismo número de acta aparece en varias filas (2021/2022),
-    # se juntan todos sus temas en una sola acta.
-    from collections import OrderedDict
-    registros = OrderedDict()
-
-    for sn in wb.sheetnames:
-        if sn not in HOJAS_ACTAS:
-            print(f"  [skip] hoja '{sn}' (no es de actas)")
-            continue
-
-        ws = wb[sn]
-        rows = list(ws.iter_rows(values_only=True, max_col=8))
-        if not rows:
-            continue
-
-        # Año tomado del nombre de la hoja (respaldo cuando la fecha viene vacía)
-        ym = re.search(r"(20\d{2})", sn)
-        anio_hoja = ym.group(1) if ym else ""
-
-        hidx = _detectar_encabezado(rows)
-        if hidx is None:
-            print(f"  [!!] '{sn}': no se halló encabezado, se omite.")
-            continue
-
-        headers = [_norm_header(c) if c else "" for c in rows[hidx]]
-
-        def col(*claves):
-            for idx, h in enumerate(headers):
-                for k in claves:
-                    if k in h:
-                        return idx
-            return None
-
-        c_acta   = col("acta", "numero", "num")
-        c_fecha  = col("fecha")
-        c_sesion = col("sesion", "tipo", "clase")
-        c_temas  = col("tema", "asunto", "orden", "tratado")
-
-        if c_acta is None:
-            print(f"  [!!] '{sn}': sin columna de acta, se omite.")
-            continue
-
-        n_hoja = 0
-        ultimo_acta = None  # para arrastrar el número en filas que solo traen tema
-
-        for r in rows[hidx + 1:]:
-            if all(c in (None, "") for c in r):
-                continue
-
-            def get(idx):
-                return r[idx] if (idx is not None and idx < len(r)) else None
-
-            acta_no = get(c_acta)
-            acta_no = re.sub(r"\.0$", "", str(acta_no).strip()) if acta_no not in (None, "") else ""
-
-            fecha_txt, year, month = _parse_fecha(get(c_fecha))
-            if not year:
-                year = anio_hoja
-
-            sesion = get(c_sesion)
-            sesion = str(sesion).strip() if sesion not in (None, "") else ""
-            temas = _split_temas(get(c_temas))
-
-            # Fila sin número de acta: pertenece a la acta anterior (continúa temas)
-            if not acta_no:
-                if not temas:
-                    continue
-                acta_no = ultimo_acta
-            if not acta_no:
-                continue
-            ultimo_acta = acta_no
-
-            clave = (year, acta_no)
-            if clave not in registros:
-                registros[clave] = {
-                    "year": year,
-                    "month": month,       # int o None (el HTML acepta null)
-                    "acta": acta_no,
-                    "fecha": fecha_txt,
-                    "sesion": sesion,
-                    "temas": [],
-                }
-            reg = registros[clave]
-            if not reg["fecha"] and fecha_txt:
-                reg["fecha"] = fecha_txt
-            if reg["month"] is None and month:
-                reg["month"] = month
-            if not reg["sesion"] and sesion:
-                reg["sesion"] = sesion
-            for t in temas:
-                if t not in reg["temas"]:
-                    reg["temas"].append(t)
-            n_hoja += 1
-
-        print(f"  [ok] '{sn}': {n_hoja} filas (año {anio_hoja})")
-
-    actas = list(registros.values())
-
-    def keyf(a):
-        try:
-            n = int(re.sub(r"\D", "", a["acta"]) or 0)
-        except ValueError:
-            n = 0
-        return (a["year"] or "0", n)
-    actas.sort(key=keyf)
-
-    print(f"  -> {len(actas)} actas en total (agrupadas por número)")
-    return actas
-
-
-# ---------------------------------------------------------------------------
-# 5. Inyectar los bloques de datos dentro del HTML existente
-# ---------------------------------------------------------------------------
-def _b64(obj):
-    return base64.b64encode(
-        json.dumps(obj, ensure_ascii=False).encode("utf-8")
-    ).decode("ascii")
-
-
-def _reemplazar_asignacion(html, varname, nuevo_b64):
-    """Reemplaza  <varname> = '....'  por el nuevo valor base64,
-    conservando el resto del HTML. Devuelve (html, ok)."""
-    patron = re.compile(r"(" + re.escape(varname) + r"\s*=\s*')[A-Za-z0-9+/=]*(')")
-    if not patron.search(html):
-        return html, False
-    nuevo = patron.sub(lambda m: m.group(1) + nuevo_b64 + m.group(2), html, count=1)
-    return nuevo, True
-
-
-def _compactar_timeline(html):
-    """Reorganiza la línea de tiempo de actas para aprovechar el ancho:
-    las tarjetas pasan de flex-wrap (3-4 por fila pegadas a la izquierda)
-    a un grid que llena todo el ancho disponible, con tarjetas más compactas
-    y menos espacio vertical entre meses. Es idempotente (se puede correr
-    varias veces sin acumular cambios)."""
-
-    PATCHES = [
-        # Contenedor de tarjetas POR MES: flex-wrap -> grid auto-fill
-        ('display:flex; flex-wrap:wrap; gap:8px;\\">',
-         'display:grid; grid-template-columns:repeat(auto-fill,minmax(62px,1fr)); gap:6px;\\">'),
-        # Contenedor sin meses (años 2021/2022): flex-wrap -> grid auto-fill
-        ('display:flex; flex-wrap:wrap; gap:8px; padding:14px 0 4px 12px;\\">',
-         'display:grid; grid-template-columns:repeat(auto-fill,minmax(62px,1fr)); gap:6px; padding:10px 0 4px 12px;\\">'),
-        # Tarjeta de acta -> más compacta (2 ocurrencias idénticas)
-        ('gap:2px; min-width:58px; padding:9px 12px; border-radius:12px;',
-         'gap:1px; min-width:0; padding:6px 5px; border-radius:9px;'),
-        # Separación entre meses -> menor
-        ('padding:14px 0 4px 20px; display:flex; flex-direction:column; gap:16px;',
-         'padding:9px 0 4px 18px; display:flex; flex-direction:column; gap:9px;'),
-        # Etiqueta de mes -> menos margen y tamaño
-        ('font-size:12.5px; font-weight:800; color:{{ g.yColor }}; margin-bottom:9px;',
-         'font-size:11.5px; font-weight:800; color:{{ g.yColor }}; margin-bottom:5px;'),
-        # Subtexto 'tema(s)' -> un poco más chico (2 ocurrencias idénticas)
-        ('font-size:9.5px; opacity:.7;',
-         'font-size:8.5px; opacity:.65;'),
-    ]
-
-    n = 0
-    for a, b in PATCHES:
-        if a in html:
-            html = html.replace(a, b)
-            n += 1
-
-    # Número del acta 14px -> 13px (solo el span que precede a {{ a.acta }})
-    pat_num = re.compile(
-        r'font-size:14px; font-weight:800;(?=[\\">]*\{\{ a\.acta \}\})'
-    )
-    if pat_num.search(html):
-        html = pat_num.sub('font-size:13px; font-weight:800;', html)
-        n += 1
-
-    if n:
-        print(f"  [ok] línea de tiempo compactada ({n} ajustes de estilo)")
-    else:
-        print("  [info] línea de tiempo: ya estaba compactada o no se halló el bloque")
-    return html
 
 
 def _compactar_cronograma(html):
@@ -2291,6 +2011,23 @@ def _reemplazar_items_grupo(html, grupo_title, items_str):
     return html[:ini] + "[" + items_str + "]" + html[fin + 1:], True
 
 
+def _renombrar_titulo_grupo(html, titulo_actual, titulo_nuevo):
+    """Cambia SOLO el texto visible del título de un grupo en recGroups,
+    de 'titulo_actual' a 'titulo_nuevo', conservando icon/items. Idempotente:
+    si ya está el nuevo, no hace nada; si está el viejo, lo renombra.
+    Devuelve (html, ancla_vigente) donde ancla_vigente es el título que
+    quedó en el HTML (para localizar el grupo en pasos siguientes)."""
+    marca_nueva = "title: '" + _esc_js(titulo_nuevo) + "', icon: RI."
+    if marca_nueva in html:
+        return html, titulo_nuevo
+    marca_vieja = "title: '" + _esc_js(titulo_actual) + "', icon: RI."
+    if marca_vieja in html:
+        html = html.replace(marca_vieja, marca_nueva, 1)
+        return html, titulo_nuevo
+    # No se encontró ninguno: dejar el actual como ancla
+    return html, titulo_actual
+
+
 def _inyectar_secciones(html, secciones_data):
     """Inyecta TODAS las secciones documentales dinámicas:
     - embebe el mapa base64 de cada sección como variable JS,
@@ -2321,39 +2058,66 @@ def _inyectar_secciones(html, secciones_data):
     # insertar todas las variables juntas tras el ancla
     html = html.replace(ancla, ancla + bloque_vars, 1)
 
-    # 2) items por grupo
+    # 2a) Renombrar el título VISIBLE de cada grupo al nombre EXACTO de su
+    #     carpeta (idempotente). Tras esto, el ancla de cada grupo pasa a ser
+    #     el nombre de carpeta. El grupo "nuevo" (Leyes) aún no existe en el
+    #     HTML, así que solo se renombran los grupos ya presentes.
+    titulo_de = {}      # id(sec) -> título vigente como ancla en el HTML
+    for sec, items, files_b64 in secciones_data:
+        destino_visible = sec["carpeta"]   # nombre tal cual de la carpeta
+        # Renombrar si el grupo ya existe (con título viejo o nuevo). Aplica
+        # también a los marcados como "nuevo" que ya hayan sido creados en una
+        # corrida anterior, para no duplicarlos.
+        html, ancla = _renombrar_titulo_grupo(html, sec["grupo"], destino_visible)
+        titulo_de[id(sec)] = ancla
+
+    # 2b) items por grupo (anclando por el título vigente = nombre de carpeta)
     for sec, items, files_b64 in secciones_data:
         items_str = _items_js_de_seccion(sec, items)
+        grupo_ancla = titulo_de[id(sec)]
 
         if sec.get("nuevo"):
-            # crear el grupo nuevo ANTES del grupo indicado
-            destino = sec["antes_de"]
-            pos = html.find(destino + "', icon: RI.")
-            if pos < 0:
-                print(f"  [!!] no se pudo ubicar '{destino}' para crear "
-                      f"'{sec['grupo']}'; se omite.")
+            # crear el grupo nuevo ANTES del grupo indicado. El 'antes_de'
+            # puede haber sido renombrado al nombre de su carpeta, así que se
+            # intenta primero el nombre de carpeta del destino y, si no, el
+            # título original.
+            destino_orig = sec["antes_de"]
+            destino_carpeta = None
+            for s2, _i2, _f2 in secciones_data:
+                if s2.get("grupo") == destino_orig:
+                    destino_carpeta = s2["carpeta"]
+                    break
+            destino = None
+            for cand in [destino_carpeta, destino_orig]:
+                if cand and (cand + "', icon: RI.") in html:
+                    destino = cand
+                    break
+            if destino is None:
+                print(f"  [!!] no se pudo ubicar destino para crear "
+                      f"'{grupo_ancla}'; se omite.")
                 continue
+            pos = html.find(destino + "', icon: RI.")
             # retroceder hasta el '{' que abre ese grupo destino
             ini_grupo = html.rfind("{ title:", 0, pos)
             if ini_grupo < 0:
                 print(f"  [!!] no se halló inicio del grupo destino; se omite "
-                      f"'{sec['grupo']}'.")
+                      f"'{grupo_ancla}'.")
                 continue
             nuevo_grupo = (
-                "{ title: '" + _esc_js(sec["grupo"]) +
+                "{ title: '" + _esc_js(grupo_ancla) +
                 "', icon: RI.folder, items: [" + items_str + "] },\\n      "
             )
             # evitar duplicar si ya existe
-            if (sec["grupo"] + "', icon: RI.") in html:
-                html, ok = _reemplazar_items_grupo(html, sec["grupo"], items_str)
-                print(f"  [ok] '{sec['grupo']}' actualizada ({len(items)} docs)")
+            if (grupo_ancla + "', icon: RI.") in html:
+                html, ok = _reemplazar_items_grupo(html, grupo_ancla, items_str)
+                print(f"  [ok] '{grupo_ancla}' actualizada ({len(items)} docs)")
             else:
                 html = html[:ini_grupo] + nuevo_grupo + html[ini_grupo:]
-                print(f"  [ok] '{sec['grupo']}' creada ({len(items)} docs)")
+                print(f"  [ok] '{grupo_ancla}' creada ({len(items)} docs)")
         else:
-            html, ok = _reemplazar_items_grupo(html, sec["grupo"], items_str)
+            html, ok = _reemplazar_items_grupo(html, grupo_ancla, items_str)
             estado = f"actualizada ({len(items)} docs)" if ok else "NO encontrada"
-            print(f"  [{'ok' if ok else '!!'}] '{sec['grupo']}' {estado}")
+            print(f"  [{'ok' if ok else '!!'}] '{grupo_ancla}' {estado}")
 
     return html
 
@@ -2627,7 +2391,97 @@ def _responsive_movil_fix(html):
     return html
 
 
-def inyectar_en_html(indice, actas, blobs, secciones_data=None):
+def _rehidratar_liviano(html):
+    """Repone los recursos pesados que la versión LIVIANA de trabajo deja como
+    marcadores, para que el HTML final quede igual de completo que siempre.
+    - El header/imagen de carga: marcador __FEBOR_HEADER_IMG__ -> HEADER_IMG_B64.
+    Los PDFs (estatuto, código, ética, CBCF) y el índice NO van aquí: se
+    regeneran desde sus carpetas en los pasos normales de inyección.
+    Idempotente: si no hay marcadores, no hace nada."""
+    mark = "__FEBOR_HEADER_IMG__"
+    if mark in html:
+        n = html.count(mark)
+        html = html.replace(mark, HEADER_IMG_B64)
+        print(f"  [ok] rehidratado header liviano ({n} ocurrencia(s))")
+    return html
+
+
+def _abrir_en_pagina(html):
+    """Hace que el botón 'Abrir documento' del buscador abra el PDF embebido en
+    una pestaña nueva, saltando a la PÁGINA de la primera coincidencia
+    (#page=N), en vez de descargarlo. Dos cambios idempotentes:
+      1) openDocTab: de 'descargar' a 'abrir en pestaña con #page'.
+      2) la línea open del resultado pasa page: primeraPag, y se calcula
+         primeraPag a partir de positions[0] y doc.pages.
+    Si los marcadores ya están, no hace nada."""
+    cambios = 0
+
+    # 1) openDocTab -> pestaña + #page (solo si aún es la versión 'descarga')
+    if "'#page=' + pg" not in html:
+        old_dl = ("a.download = doc.fname || 'documento.pdf';\\n"
+                  "      document.body.appendChild(a);\\n"
+                  "      a.click();\\n"
+                  "      document.body.removeChild(a);\\n"
+                  "      setTimeout(() => URL.revokeObjectURL(url), 30000);\\n"
+                  "      this.setState({ toast: 'Descargando ' + (doc.name || 'documento') + ' …' });")
+        new_open = ("const pg = (doc.page && doc.page > 0) ? doc.page : 1;\\n"
+                    "      const verUrl = url + '#page=' + pg;\\n"
+                    "      const win = window.open(verUrl, '_blank');\\n"
+                    "      if (!win) {\\n"
+                    "        const a = document.createElement('a');\\n"
+                    "        a.href = verUrl; a.target = '_blank'; a.rel = 'noopener';\\n"
+                    "        document.body.appendChild(a); a.click(); document.body.removeChild(a);\\n"
+                    "      }\\n"
+                    "      setTimeout(() => URL.revokeObjectURL(url), 60000);\\n"
+                    "      this.setState({ toast: 'Abriendo ' + (doc.name || 'documento') + (pg > 1 ? (' · pág. ' + pg) : '') + ' …' });")
+        if old_dl in html:
+            html = html.replace(old_dl, new_open, 1)
+            cambios += 1
+
+    # 2) calcular primeraPag tras 'const count = positions.length;'
+    if "var primeraPag = 0;" not in html:
+        anc = "if (positions.length > 0) {\\n          const count = positions.length;\\n"
+        nue = (anc +
+               "          var primeraPag = 0; try { var __p0 = positions[0]; var __pg0 = doc.pages; "
+               "if (__pg0 && __pg0.length) { var __k = 0; while (__k < __pg0.length && __p0 >= __pg0[__k]) __k++; primeraPag = __k + 1; } } catch (_) { primeraPag = 0; }\\n")
+        if anc in html:
+            html = html.replace(anc, nue, 1)
+            cambios += 1
+
+    # 3) pasar page: primeraPag en la línea open (vía dinámica)
+    if "page: primeraPag," not in html:
+        anc2 = ("open: () => this.openDocTab({ name: doc.fname, fname: doc.fname, "
+                "b64: (this[doc.mapavar]")
+        nue2 = ("open: () => this.openDocTab({ name: doc.fname, fname: doc.fname, "
+                "page: primeraPag, b64: (this[doc.mapavar]")
+        if anc2 in html:
+            html = html.replace(anc2, nue2, 1)
+            cambios += 1
+
+    if cambios:
+        print(f"  [ok] apertura en página aplicada ({cambios} cambio(s))")
+    else:
+        print("  [info] apertura en página: ya estaba aplicada")
+    return html
+
+
+def _b64(obj):
+    return base64.b64encode(
+        json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    ).decode("ascii")
+
+
+def _reemplazar_asignacion(html, varname, nuevo_b64):
+    """Reemplaza  <varname> = '....'  por el nuevo valor base64,
+    conservando el resto del HTML. Devuelve (html, ok)."""
+    patron = re.compile(r"(" + re.escape(varname) + r"\s*=\s*')[A-Za-z0-9+/=]*(')")
+    if not patron.search(html):
+        return html, False
+    nuevo = patron.sub(lambda m: m.group(1) + nuevo_b64 + m.group(2), html, count=1)
+    return nuevo, True
+
+
+def inyectar_en_html(indice, blobs, secciones_data=None):
     html_path = ROOT / HTML_FILE
     if not html_path.exists():
         sys.exit(f"  [error] no se encontró '{HTML_FILE}' en la carpeta. "
@@ -2635,17 +2489,24 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
 
     html = html_path.read_text(encoding="utf-8")
 
+    # Paso 0: si es la versión liviana de trabajo, reponer recursos pesados.
+    html = _rehidratar_liviano(html)
+
     cambios = []
     html, ok = _reemplazar_asignacion(html, "docIdxB64", _b64(indice))
     cambios.append(("docIdxB64", ok))
-    html, ok = _reemplazar_asignacion(html, "actasB64", _b64(actas))
-    cambios.append(("actasB64", ok))
+
+    # PDFs del catálogo (estatuto, código de buen gobierno, ética, títulos CBCF).
+    # En la versión liviana llegan vacíos en el HTML y aquí se reembeben desde
+    # sus PDFs (dict 'blobs'). Si 'blobs' viene vacío, no se toca nada.
+    for _bv, _b64val in (blobs or {}).items():
+        html, _okbv = _reemplazar_asignacion(html, _bv, _b64val)
+        cambios.append((_bv, _okbv))
 
     # Poblar TODAS las secciones documentales (dinámicas)
     html = _inyectar_secciones(html, secciones_data or [])
 
     # Reorganizar la línea de tiempo (diseño más compacto)
-    html = _compactar_timeline(html)
     # Compactar el cronograma (calendario)
     html = _compactar_cronograma(html)
     # Quitar el banner rojo '[bundle] error' por recursos externos
@@ -2660,6 +2521,7 @@ def inyectar_en_html(indice, actas, blobs, secciones_data=None):
     html = _acordeon_resultados(html)
     # Número de página en cada resultado del buscador
     html = _agregar_pagina_snippets(html)
+    html = _abrir_en_pagina(html)
     # Animación de las burbujas (entrada + selección)
     html = _animar_burbujas(html)
     # Barra de scroll visible en móvil (Recursos y Docentes)
@@ -2730,7 +2592,7 @@ def publicar_github():
     print("\n== Publicando en GitHub ==")
     comandos = [
         ["git", "add", "."],
-        ["git", "commit", "-m", "Actualizar buscador documental y actas"],
+        ["git", "commit", "-m", "Actualizar buscador documental"],
         ["git", "push"],
     ]
     for cmd in comandos:
@@ -2773,11 +2635,8 @@ def main():
         for w, n in agg.most_common(44)
     ]
 
-    print("\n== 4. Leyendo actas del Consejo ==")
-    actas = construir_actas()
-
     print("\n== 5. Inyectando datos en el HTML ==")
-    inyectar_en_html(indice, actas, {}, secciones_data)
+    inyectar_en_html(indice, {}, secciones_data)
 
     publicar_github()
 
