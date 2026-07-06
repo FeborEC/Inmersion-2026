@@ -2396,6 +2396,51 @@ def _responsive_movil_fix(html):
     return html
 
 
+def _aulaplay_movil(html):
+    """Corrige SOLO la vista móvil del encabezado: evita que la tarjeta de
+    AulaPlay empuje el logo de Febor fuera del borde izquierdo.
+
+    Causa: la regla existente '[data-hdrlogo] img { width:min(420px,82%) }'
+    (dentro de @media max-width:920px) también agranda la imagen de AulaPlay
+    (data-aulaplayimg), que es descendiente de data-hdrlogo. Al inflarse,
+    empuja el logo. Aquí se le devuelve a la imagen de AulaPlay un tamaño
+    pequeño y se reduce el padding/margin del botón en celular, permitiendo
+    además que el encabezado se acomode (wrap) sin recortar el logo.
+
+    Solo layout/CSS. No cambia textos, colores, íconos ni lógica. Idempotente.
+    """
+    if 'aulaplay-movil' in html:
+        print("  [info] AulaPlay móvil: ya estaba aplicado")
+        return html
+
+    css = (
+        '/* aulaplay-movil */\\n'
+        '  [data-hdrlogo] { flex-wrap:wrap !important; gap:8px; }\\n'
+        '  [data-hdrlogo] [data-aulaplayimg] { width:auto !important; '
+        'height:40px !important; }\\n'
+        '  [data-hdrlogo] [data-aulaplay] { margin-left:0 !important; '
+        'padding:8px 14px !important; flex:0 0 auto; }\\n')
+
+    # Insertar dentro de la media query de 920px, justo tras la regla que
+    # fija el tamaño del logo en móvil (así queda contiguo y con más
+    # especificidad por el descendiente [data-aulaplayimg]).
+    anchor = '[data-hdrlogo] img { width:min(420px,82%); }\\n'
+    if anchor in html:
+        html = html.replace(anchor, anchor + '  ' + css, 1)
+        print("  [ok] AulaPlay móvil: tarjeta reducida, logo Febor sin desplazar")
+    else:
+        # Respaldo: antes del cierre de la hoja de estilos, con su propia
+        # media query.
+        fallback = ('@media (max-width: 920px) {\\n  ' + css + '}\\n')
+        if '<\\u002Fstyle>' in html:
+            html = html.replace('<\\u002Fstyle>', fallback + '<\\u002Fstyle>', 1)
+            print("  [ok] AulaPlay móvil (respaldo): CSS añadido antes de </style>")
+        else:
+            print("  [!!] AulaPlay móvil: no se halló ancla ni </style>")
+
+    return html
+
+
 def _rehidratar_liviano(html):
     """Repone los recursos pesados que la versión LIVIANA de trabajo deja como
     marcadores, para que el HTML final quede igual de completo que siempre.
@@ -2674,6 +2719,8 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
     html = _emparejar_grid_dom(html)
     html = _cronograma_panel_pc(html)
     html = _responsive_movil_fix(html)
+    # Achicar la tarjeta AulaPlay en celular para que no desplace el logo
+    html = _aulaplay_movil(html)
 
     # Escribir el HTML final sobre el mismo archivo (regenera en sitio).
     html_path.write_text(html, encoding="utf-8")
@@ -2689,51 +2736,19 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
 # ---------------------------------------------------------------------------
 def publicar_github():
     print("\n== Publicando en GitHub ==")
-
-    # 1) git add .
-    add = subprocess.run(["git", "add", "."], cwd=str(ROOT),
-                         capture_output=True, text=True)
-    print("  $ git add .")
-    if add.returncode != 0:
-        print("    [error] 'git add' falló:")
-        print("    " + (add.stderr or "").strip().replace("\n", "\n    "))
-        return
-
-    # 2) ¿Hay algo realmente preparado para commitear?
-    #    'git diff --cached --quiet' devuelve 1 si HAY cambios en el stage.
-    diff = subprocess.run(["git", "diff", "--cached", "--quiet"],
-                         cwd=str(ROOT))
-    if diff.returncode == 0:
-        print("  $ git commit ...")
-        print("    [aviso] No hay cambios que publicar: el index.html generado")
-        print("            es idéntico al ya versionado (working tree clean).")
-        print("    -> Verifica que renombraste index_trabajo.html -> index.html")
-        print("       ANTES de correr el script, para regenerar el artefacto completo.")
-        return
-
-    # 3) git commit
-    commit = subprocess.run(
+    comandos = [
+        ["git", "add", "."],
         ["git", "commit", "-m", "Actualizar buscador documental"],
-        cwd=str(ROOT), capture_output=True, text=True)
-    print("  $ git commit -m \"Actualizar buscador documental\"")
-    salida = ((commit.stdout or "") + (commit.stderr or "")).strip()
-    if salida:
-        print("    " + salida.replace("\n", "\n    "))
-    if commit.returncode != 0:
-        print(f"    [error] 'git commit' terminó con código {commit.returncode}. Se aborta el push.")
-        return
-
-    # 4) git push
-    push = subprocess.run(["git", "push"], cwd=str(ROOT),
-                         capture_output=True, text=True)
-    print("  $ git push")
-    salida = ((push.stdout or "") + (push.stderr or "")).strip()
-    if salida:
-        print("    " + salida.replace("\n", "\n    "))
-    if push.returncode != 0:
-        print(f"    [error] 'git push' terminó con código {push.returncode}.")
-    else:
-        print("    [ok] Cambios publicados en GitHub.")
+        ["git", "push"],
+    ]
+    for cmd in comandos:
+        print("  $ " + " ".join(cmd))
+        res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
+        salida = (res.stdout or "") + (res.stderr or "")
+        if salida.strip():
+            print("    " + salida.strip().replace("\n", "\n    "))
+        if res.returncode != 0 and cmd[1] != "commit":
+            print(f"    [aviso] '{cmd[1]}' terminó con código {res.returncode}.")
 
 
 # ---------------------------------------------------------------------------
