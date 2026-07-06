@@ -2689,19 +2689,51 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
 # ---------------------------------------------------------------------------
 def publicar_github():
     print("\n== Publicando en GitHub ==")
-    comandos = [
-        ["git", "add", "."],
+
+    # 1) git add .
+    add = subprocess.run(["git", "add", "."], cwd=str(ROOT),
+                         capture_output=True, text=True)
+    print("  $ git add .")
+    if add.returncode != 0:
+        print("    [error] 'git add' falló:")
+        print("    " + (add.stderr or "").strip().replace("\n", "\n    "))
+        return
+
+    # 2) ¿Hay algo realmente preparado para commitear?
+    #    'git diff --cached --quiet' devuelve 1 si HAY cambios en el stage.
+    diff = subprocess.run(["git", "diff", "--cached", "--quiet"],
+                         cwd=str(ROOT))
+    if diff.returncode == 0:
+        print("  $ git commit ...")
+        print("    [aviso] No hay cambios que publicar: el index.html generado")
+        print("            es idéntico al ya versionado (working tree clean).")
+        print("    -> Verifica que renombraste index_trabajo.html -> index.html")
+        print("       ANTES de correr el script, para regenerar el artefacto completo.")
+        return
+
+    # 3) git commit
+    commit = subprocess.run(
         ["git", "commit", "-m", "Actualizar buscador documental"],
-        ["git", "push"],
-    ]
-    for cmd in comandos:
-        print("  $ " + " ".join(cmd))
-        res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
-        salida = (res.stdout or "") + (res.stderr or "")
-        if salida.strip():
-            print("    " + salida.strip().replace("\n", "\n    "))
-        if res.returncode != 0 and cmd[1] != "commit":
-            print(f"    [aviso] '{cmd[1]}' terminó con código {res.returncode}.")
+        cwd=str(ROOT), capture_output=True, text=True)
+    print("  $ git commit -m \"Actualizar buscador documental\"")
+    salida = ((commit.stdout or "") + (commit.stderr or "")).strip()
+    if salida:
+        print("    " + salida.replace("\n", "\n    "))
+    if commit.returncode != 0:
+        print(f"    [error] 'git commit' terminó con código {commit.returncode}. Se aborta el push.")
+        return
+
+    # 4) git push
+    push = subprocess.run(["git", "push"], cwd=str(ROOT),
+                         capture_output=True, text=True)
+    print("  $ git push")
+    salida = ((push.stdout or "") + (push.stderr or "")).strip()
+    if salida:
+        print("    " + salida.replace("\n", "\n    "))
+    if push.returncode != 0:
+        print(f"    [error] 'git push' terminó con código {push.returncode}.")
+    else:
+        print("    [ok] Cambios publicados en GitHub.")
 
 
 # ---------------------------------------------------------------------------
