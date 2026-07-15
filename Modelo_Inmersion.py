@@ -2441,6 +2441,181 @@ def _aulaplay_movil(html):
     return html
 
 
+# Títulos exactos del array 'programa' (para que modMatch derive módulo y color)
+T1 = 'Economía Solidaria: Conociendo el Sector y el Rol de Febor'
+T2 = 'El Asociado: Centro de la Gestión Solidaria'
+T3 = 'Tecnología que Conecta y Transforma'
+T4 = 'Finanzas Solidarias: Entender para Decidir Mejor'
+T5 = 'Marco Legal: Reglas Claves para Actuar con Seguridad'
+T6 = 'Control y Seguimiento: Confianza y Transparencia'
+# Bullet exacto del Módulo 06 (para que Planeación tome el color del M06)
+TPLAN = 'Planeación estratégica 2026-2030'
+
+
+def _bloque(t1, t2, act, place, ic):
+    return ("{ time: '%s', act: '%s', place: '%s', ic: '%s' }" % (t1, act, place, ic)) if not t2 else ""
+
+
+def _dia_modulos(day, wd, sum_, am_act, am_ic, pm_act, pm_ic, noche=None):
+    """Arma un día lectivo con la malla fija de la infografía."""
+    noche = noche or "librenoche()"
+    return (
+        "      { day: '%s', wd: '%s', sum: '%s', plan: ["
+        "desayuno(), "
+        "{ time: '8:00 – 10:00 a.m.', act: '%s', place: 'Salón Principal', ic: '%s' }, "
+        "brk(), "
+        "{ time: '10:00 a.m. – 12:30 p.m.', act: '%s', place: 'Salón Principal', ic: '%s' }, "
+        "almuerzo(), "
+        "{ time: '2:00 – 3:30 p.m.', act: '%s', place: 'Salón Principal', ic: '%s' }, "
+        "brkpm(), "
+        "{ time: '4:00 – 5:30 p.m.', act: '%s', place: 'Salón Principal', ic: '%s' }, "
+        "libre(), cena(), %s"
+        "] },\\n"
+    ) % (day, wd, sum_, am_act, am_ic, am_act, am_ic, pm_act, pm_ic, pm_act, pm_ic, noche)
+
+
+NUEVA_AGENDA = (
+    "const agenda = [\\n"
+
+    # DOMINGO 19
+    "      { day: '19', wd: 'DOM', sum: 'Llegada, check-in y Experiencia Llanera', plan: ["
+    "{ time: '8:00 a.m.', act: 'Inicia la experiencia de inmersión para los que viajan desde Bogotá', "
+    "place: 'Oficina de Febor de la calle 42 · salimos todos juntos', ic: 'users' }, "
+    "{ time: '11:00 a.m.', act: 'Si viajas en avión, al llegar al aeropuerto de Villavicencio te estará esperando un micro', "
+    "place: 'Alvaro Arenas · 311 251 2711 · Placa UFX196', ic: 'door' }, "
+    "{ time: '2:00 p.m.', act: 'Almuerzo y Final Mundial', place: 'Disfrutemos juntos la gran final', ic: 'utensils' }, "
+    "{ time: '3:00 p.m.', act: 'Check-in y entrega de habitaciones', place: 'Instálate y relájate', ic: 'bed' }, "
+    "{ time: '4:00 – 7:00 p.m.', act: 'Experiencia Llanera', place: 'Vive la esencia de nuestra tierra', ic: 'horse' }"
+    "] },\\n"
+
+    # LUNES 20 -> M01 (AM) / M02 (PM)
+    + _dia_modulos('20', 'LUN', 'Módulos 01 y 02 · Economía Solidaria y El Asociado',
+                   T1, 'building', T2, 'users')
+    # MARTES 21 -> M02 (AM) / M03 (PM)
+    + _dia_modulos('21', 'MAR', 'Módulos 02 y 03 · El Asociado y Tecnología',
+                   T2, 'users', T3, 'laptop')
+    # MIÉRCOLES 22 -> M04 (AM) / M05 (PM)
+    + _dia_modulos('22', 'MIÉ', 'Módulos 04 y 05 · Finanzas Solidarias y Marco Legal',
+                   T4, 'chart', T5, 'scale')
+    # JUEVES 23 -> M04 (AM) / M06 (PM)
+    + _dia_modulos('23', 'JUE', 'Módulos 04 y 06 · Finanzas Solidarias y Control y Seguimiento',
+                   T4, 'chart', T6, 'shield')
+    # VIERNES 24 -> M06 (AM) / Planeación Estratégica (PM) + Lunada
+    + _dia_modulos('24', 'VIE', 'Módulo 06 · Control y Seguimiento · Planeación Estratégica · Lunada',
+                   T6, 'shield', TPLAN, 'gauge',
+                   noche=("{ time: '8:00 – 10:00 p.m.', act: 'Lunada', "
+                          "place: 'Dress code: Blanco', ic: 'star' }"))
+
+    # SÁBADO 25
+    + "      { day: '25', wd: 'SÁB', sum: 'Regreso a casa', plan: ["
+    "desayuno(), "
+    "{ time: '9:00 a.m.', act: 'Regreso a casa', "
+    "place: 'Llévate grandes recuerdos y nuevas experiencias', ic: 'door' }"
+    "] },\\n"
+    "    ];"
+)
+
+
+def _agenda_infografia(html):
+    """Reajusta los DATOS del cronograma para que coincidan con la infografía
+    oficial: malla de horarios, asignación de módulos por día, bloques 'Libre',
+    la Lunada del viernes y el detalle del domingo.
+
+    No cambia diseño, colores ni iconos: los textos de módulo usan los títulos
+    exactos del array 'programa', de modo que modMatch() siga derivando la
+    etiqueta 'Módulo 0X' y su color original. Idempotente."""
+    if 'agenda-infografia' in html:
+        print("  [info] cronograma: ya estaba reajustado")
+        return html
+
+    anchor_h = ("const cena = () => ({ time: '7 – 8 p.m.', act: 'Cena', "
+                "place: 'Restaurante', ic: 'utensils' });")
+    if anchor_h not in html:
+        print("  [!!] cronograma: no se hallaron los helpers de comidas")
+        return html
+
+    # Helpers nuevos (Break PM, Libre tarde y Libre noche), en el mismo estilo.
+    nuevos_h = (
+        "const cena = () => ({ time: '7:00 – 8:00 p.m.', act: 'Cena', "
+        "place: 'Restaurante', ic: 'utensils' });"
+        "\\n    /* agenda-infografia */"
+        "\\n    const brkpm = () => ({ time: '3:30 – 4:00 p.m.', act: 'Break PM', "
+        "place: 'Cafetería', ic: 'coffee' });"
+        "\\n    const libre = () => ({ time: '5:30 – 7:00 p.m.', act: 'Libre', "
+        "place: 'Tiempo personal', ic: 'sun' });"
+        "\\n    const librenoche = () => ({ time: '8:00 – 10:00 p.m.', act: 'Libre', "
+        "place: 'Tiempo personal', ic: 'star' });"
+    )
+    html = html.replace(anchor_h, nuevos_h, 1)
+
+    # Ajustar los helpers existentes a la malla horaria de la infografía.
+    html = html.replace(
+        "const desayuno = () => ({ time: '7 – 8 a.m.', act: 'Desayuno', "
+        "place: 'Restaurante', ic: 'coffee' });",
+        "const desayuno = () => ({ time: '7:00 – 8:00 a.m.', act: 'Desayuno bufet', "
+        "place: 'Restaurante', ic: 'coffee' });", 1)
+    html = html.replace(
+        "const brk = () => ({ time: '10 – 10:30 a.m.', act: 'Break', "
+        "place: 'Cafetería', ic: 'coffee' });",
+        "const brk = () => ({ time: '10:00 – 10:30 a.m.', act: 'Break AM', "
+        "place: 'Cafetería', ic: 'coffee' });", 1)
+    html = html.replace(
+        "const almuerzo = () => ({ time: '12:30 – 1:30 p.m.', act: 'Almuerzo', "
+        "place: 'Restaurante', ic: 'utensils' });",
+        "const almuerzo = () => ({ time: '12:30 – 2:00 p.m.', act: 'Almuerzo', "
+        "place: 'Restaurante', ic: 'utensils' });", 1)
+
+    # 'Break PM' y 'Libre' deben pintarse como bloque logístico (naranja) igual
+    # que Desayuno/Break/Almuerzo/Cena: se amplía el regex ya existente.
+    html = html.replace(
+        "/Desayuno|Break|Almuerzo|Cena/i.test(act)",
+        "/Desayuno|Break|Almuerzo|Cena|Libre/i.test(act)")
+    html = html.replace(
+        "/Desayuno|Break|Almuerzo|Cena/i.test(p.act)",
+        "/Desayuno|Break|Almuerzo|Cena|Libre/i.test(p.act)")
+
+    # Reemplazar el array agenda completo.
+    i = html.find("const agenda = [")
+    if i < 0:
+        print("  [!!] cronograma: no se halló el array 'agenda'")
+        return html
+    j = html.find("];", i)
+    if j < 0:
+        print("  [!!] cronograma: no se halló el cierre del array 'agenda'")
+        return html
+    html = html[:i] + NUEVA_AGENDA + html[j + 2:]
+
+    print("  [ok] cronograma reajustado según la infografía (días 19–25)")
+    return html
+
+BULLETS_M3 = ("'Ecosistemas Digitales', 'Factor Fintech', 'Inteligencia Artificial', "
+              "'Riesgos Emergentes', 'Seguridad de la Información', "
+              "'Plan de Continuidad de Negocio'")
+
+
+def _temas_modulo3(html):
+    """Agrega los temas del Módulo 03 'Tecnología que Conecta y Transforma',
+    que hasta ahora tenía la lista de bullets vacía.
+
+    Solo cambia datos (bullets). No toca diseño, colores ni iconos.
+    Idempotente: si los temas ya están, no hace nada."""
+    viejo = ("title: 'Tecnología que Conecta y Transforma', bullets: [] }")
+    nuevo = ("title: 'Tecnología que Conecta y Transforma', bullets: ["
+             + BULLETS_M3 + "] }")
+
+    if BULLETS_M3 in html:
+        print("  [info] Módulo 03: los temas ya estaban")
+        return html
+
+    if viejo not in html:
+        print("  [!!] Módulo 03: no se halló la lista de temas vacía")
+        return html
+
+    html = html.replace(viejo, nuevo, 1)
+    print("  [ok] Módulo 03: 6 temas de Tecnología agregados")
+    return html
+
+
 def _rehidratar_liviano(html):
     """Repone los recursos pesados que la versión LIVIANA de trabajo deja como
     marcadores, para que el HTML final quede igual de completo que siempre.
@@ -2721,6 +2896,10 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
     html = _responsive_movil_fix(html)
     # Achicar la tarjeta AulaPlay en celular para que no desplace el logo
     html = _aulaplay_movil(html)
+    # Reajustar los datos del cronograma según la infografía oficial
+    html = _agenda_infografia(html)
+    # Temas del Módulo 03 (Tecnología)
+    html = _temas_modulo3(html)
 
     # Escribir el HTML final sobre el mismo archivo (regenera en sitio).
     html_path.write_text(html, encoding="utf-8")
