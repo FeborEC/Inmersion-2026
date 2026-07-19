@@ -2945,6 +2945,42 @@ def _link_posicion_sector(html):
     return html
 
 
+BULLETS_M1_VIEJO = (
+    "bullets: ['Introducción y bienvenida', "
+    "'Entidades de economía solidaria y sus principales características', "
+    "'El rol de las organizaciones solidarias, Fogacoop y la Supersolidaria', "
+    "'Categorización de las entidades solidarias según la Supersolidaria', "
+    "'Requisitos para operar como cooperativa especializada: el caso Febor', "
+    "'Diferencias entre cooperativas de economía solidaria y cooperativas financieras', "
+    "'Indicadores financieros básicos para comprender la gestión cooperativa', "
+    "'Febor a través del tiempo: historia, logros y transformación'] }"
+)
+
+BULLETS_M1_NUEVO = (
+    "bullets: ['Contexto de la Economía Solidaria', "
+    "'Principales entidades y esquemas públicos en el Sector de la Economía Solidaria', "
+    "'Febor en el mapa del Sector Solidario', "
+    "'Febor Dejando Huella'] }"
+)
+
+
+def _temario_modulo1(html):
+    """Reemplaza el temario (bullets) del Módulo 01 'Economía Solidaria:
+    Conociendo el Sector y el Rol de Febor' por el nuevo listado de Juan Pablo.
+
+    Solo cambia datos (bullets). No toca diseño, colores, iconos ni el título
+    (por lo que el cronograma sigue derivando módulo/color igual). Idempotente."""
+    if 'Febor Dejando Huella' in html:
+        print("  [info] Módulo 01: el temario ya estaba actualizado")
+        return html
+    if BULLETS_M1_VIEJO not in html:
+        print("  [!!] Módulo 01: no se halló el temario anterior")
+        return html
+    html = html.replace(BULLETS_M1_VIEJO, BULLETS_M1_NUEVO, 1)
+    print("  [ok] Módulo 01: temario actualizado (4 temas)")
+    return html
+
+
 def _rehidratar_liviano(html):
     """Repone los recursos pesados que la versión LIVIANA de trabajo deja como
     marcadores, para que el HTML final quede igual de completo que siempre.
@@ -3233,6 +3269,8 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
     html = _foto_juan_pablo(html)
     # Enlace navegable 'Posición Febor frente al Sector' en Recursos
     html = _link_posicion_sector(html)
+    # Nuevo temario del Módulo 01 (Juan Pablo)
+    html = _temario_modulo1(html)
 
     # Escribir el HTML final sobre el mismo archivo (regenera en sitio).
     html_path.write_text(html, encoding="utf-8")
