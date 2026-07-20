@@ -3358,21 +3358,102 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
 # ---------------------------------------------------------------------------
 # 6. Publicación a GitHub
 # ---------------------------------------------------------------------------
-def publicar_github():
-    print("\n== Publicando en GitHub ==")
-    comandos = [
-        ["git", "add", "."],
-        ["git", "commit", "-m", "Actualizar buscador documental"],
-        ["git", "push"],
-    ]
-    for cmd in comandos:
+def _git(cmd, mostrar=True):
+    """Ejecuta un comando git en la raíz del proyecto y devuelve (rc, salida)."""
+    if mostrar:
         print("  $ " + " ".join(cmd))
-        res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
-        salida = (res.stdout or "") + (res.stderr or "")
-        if salida.strip():
-            print("    " + salida.strip().replace("\n", "\n    "))
-        if res.returncode != 0 and cmd[1] != "commit":
-            print(f"    [aviso] '{cmd[1]}' terminó con código {res.returncode}.")
+    res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
+    salida = ((res.stdout or "") + (res.stderr or "")).strip()
+    if mostrar and salida:
+        print("    " + salida.replace("\n", "\n    "))
+    return res.returncode, salida
+
+
+def publicar_github():
+    """Publica index.html en GitHub de forma robusta.
+
+    Resuelve automáticamente la causa más común del 'nothing to commit':
+    que index.html esté en .gitignore (o no rastreado). En ese caso lo fuerza
+    con 'git add -f'. Solo hace commit si hay algo realmente preparado, y no
+    oculta errores de push. Al final confirma el commit que subió o explica
+    con precisión por qué no se subió nada."""
+    print("\n== Publicando en GitHub ==")
+
+    html_rel = HTML_FILE  # "index.html"
+    html_abs = ROOT / HTML_FILE
+
+    # 0) Verificación previa: ¿existe el archivo generado?
+    if not html_abs.exists():
+        print(f"  [error] No existe '{html_rel}' en la carpeta del proyecto. "
+              f"Renombra tu index_trabajo.html a index.html y vuelve a correr.")
+        return
+
+    # 1) ¿Estamos dentro de un repositorio git?
+    rc, _ = _git(["git", "rev-parse", "--is-inside-work-tree"], mostrar=False)
+    if rc != 0:
+        print("  [error] Esta carpeta no es un repositorio git. No se puede publicar.")
+        return
+
+    # 2) ¿index.html está siendo ignorado por .gitignore?
+    rc_ig, out_ig = _git(["git", "check-ignore", html_rel], mostrar=False)
+    ignorado = (rc_ig == 0 and out_ig.strip() != "")
+    if ignorado:
+        print(f"  [aviso] '{html_rel}' estaba en .gitignore; se forzará su inclusión.")
+
+    # 3) Preparar el archivo. Si está ignorado, forzar con -f.
+    add_cmd = ["git", "add", "-f", html_rel] if ignorado else ["git", "add", "."]
+    _git(add_cmd)
+
+    # 4) ¿Hay algo realmente preparado para commit? (índice != HEAD)
+    rc_diff, _ = _git(["git", "diff", "--cached", "--quiet"], mostrar=False)
+    # rc_diff == 0  -> no hay cambios staged ; rc_diff == 1 -> sí hay cambios.
+    if rc_diff == 0:
+        # No hay nada preparado. Distinguir por qué.
+        # ¿El archivo de trabajo difiere del último commit?
+        rc_wt, _ = _git(["git", "diff", "--quiet", "HEAD", "--", html_rel],
+                        mostrar=False)
+        if rc_wt == 0:
+            print(f"  [info] El '{html_rel}' generado es IDÉNTICO al ya publicado "
+                  f"en GitHub: no hay cambios que subir.")
+            print("         (Si esperabas cambios, confirma que renombraste el "
+                  "index_trabajo.html correcto antes de correr el script.)")
+            _mostrar_ultimo_commit()
+            return
+        else:
+            print(f"  [aviso] '{html_rel}' tiene cambios pero git no los preparó. "
+                  f"Reintentando con inclusión forzada...")
+            _git(["git", "add", "-f", html_rel])
+            rc_diff2, _ = _git(["git", "diff", "--cached", "--quiet"], mostrar=False)
+            if rc_diff2 == 0:
+                print("  [error] Aún no hay nada que commitear. Revisa manualmente "
+                      "con 'git status'.")
+                return
+
+    # 5) Commit (solo si llegamos aquí es porque hay algo preparado).
+    rc_c, out_c = _git(["git", "commit", "-m", "Actualizar Jornada de Inmersión 2026"])
+    if rc_c != 0:
+        print(f"  [error] El commit falló (código {rc_c}). No se hará push.")
+        return
+
+    # 6) Push (no ocultar errores).
+    rc_p, out_p = _git(["git", "push"])
+    if rc_p != 0:
+        print(f"  [error] El push falló (código {rc_p}). Los cambios quedaron "
+              f"commiteados localmente pero NO subieron a GitHub.")
+        print("          Revisa tu conexión o credenciales y reintenta 'git push'.")
+        return
+
+    print("  [ok] Cambios publicados en GitHub.")
+    _mostrar_ultimo_commit()
+    print("       GitHub Pages puede tardar 1–10 min en reflejar el cambio; "
+          "si no lo ves, recarga con Ctrl+F5 o abre una ventana de incógnito.")
+
+
+def _mostrar_ultimo_commit():
+    """Muestra hash, fecha y mensaje del último commit, para confirmar qué subió."""
+    rc, out = _git(["git", "log", "-1", "--format=%h | %ci | %s"], mostrar=False)
+    if rc == 0 and out.strip():
+        print("  [commit actual] " + out.strip())
 
 
 # ---------------------------------------------------------------------------
