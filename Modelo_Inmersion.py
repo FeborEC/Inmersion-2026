@@ -2443,7 +2443,7 @@ def _aulaplay_movil(html):
 
 # Títulos exactos del array 'programa' (para que modMatch derive módulo y color)
 T1 = 'Economía Solidaria: Conociendo el Sector y el Rol de Febor'
-T2 = 'El Asociado: Centro de la Gestión Solidaria'
+T2 = 'El Asociado: La razón de ser de Febor'
 T3 = 'Tecnología que Conecta y Transforma'
 T4 = 'Finanzas Solidarias: Entender para Decidir Mejor'
 T5 = 'Marco Legal: Reglas Claves para Actuar con Seguridad'
@@ -2981,6 +2981,76 @@ def _temario_modulo1(html):
     return html
 
 
+FIRMA = ('style=\\"flex:0 0 auto; width:30px; height:30px; border-radius:50%; '
+         'background:var(--base); box-shadow:var(--raise);')
+
+FIRMA_NUEVA = ('data-dlbtn=\\"\\" style=\\"flex:0 0 auto; width:36px; height:36px; '
+               'border-radius:50%; background:var(--base); box-shadow:var(--raise);')
+
+CSS = (
+    "/* dlbtn-hover */\\n"
+    "[data-dlbtn] { transition: box-shadow .16s ease, transform .12s ease, "
+    "color .16s ease !important; }\\n"
+    "[data-dlbtn] svg { pointer-events:none; }\\n"
+    "[data-dlbtn]:hover { box-shadow: var(--inset) !important; "
+    "color: var(--ico) !important; transform: scale(1.08); }\\n"
+    "[data-dlbtn]:active { box-shadow: var(--inset) !important; "
+    "transform: scale(0.96); }\\n"
+    "@media (hover:none) { [data-dlbtn] { width:40px !important; "
+    "height:40px !important; } }\\n"
+)
+
+
+def _mejorar_botones_descarga(html):
+    """Mejora usabilidad de los botones redondos de descarga/enlace de Recursos.
+    Solo CSS/layout. Idempotente."""
+    if 'dlbtn-hover' in html:
+        print("  [info] Botones de descarga: mejora ya aplicada")
+        return html
+    n = html.count(FIRMA)
+    if n == 0:
+        print("  [!!] Botones de descarga: no se hallo la firma de estilo")
+        return html
+    html = html.replace(FIRMA, FIRMA_NUEVA)
+    if '<\\u002Fstyle>' in html:
+        html = html.replace('<\\u002Fstyle>', CSS + '<\\u002Fstyle>', 1)
+    else:
+        print("  [!!] Botones de descarga: no se hallo </style>")
+        return html
+    print("  [ok] Botones de descarga mejorados (%d botones)" % n)
+    return html
+
+
+TIT_VIEJO = 'El Asociado: Centro de la Gestión Solidaria'
+TIT_NUEVO = 'El Asociado: La razón de ser de Febor'
+
+
+def _titulo_modulo2(html):
+    p_title_v = "title: '" + TIT_VIEJO + "'"
+    p_title_n = "title: '" + TIT_NUEVO + "'"
+    p_temas_v = "temas: ['Módulo 2: " + TIT_VIEJO + "']"
+    p_temas_n = "temas: ['Módulo 2: " + TIT_NUEVO + "']"
+
+    # Idempotencia por el patrón específico del título en 'programa' (no por el
+    # texto suelto, que también aparece en la agenda del cronograma).
+    if p_title_n in html:
+        print("  [info] Módulo 02: el título ya estaba actualizado")
+        return html
+
+    if p_title_v not in html:
+        print("  [!!] Módulo 02: no se halló el título en programa")
+        return html
+
+    html = html.replace(p_title_v, p_title_n, 1)
+    if p_temas_v in html:
+        html = html.replace(p_temas_v, p_temas_n, 1)
+    else:
+        print("  [aviso] Módulo 02: no se halló 'temas' en la ficha (se omite)")
+
+    print("  [ok] Módulo 02: título actualizado (tarjeta + ficha)")
+    return html
+
+
 def _rehidratar_liviano(html):
     """Repone los recursos pesados que la versión LIVIANA de trabajo deja como
     marcadores, para que el HTML final quede igual de completo que siempre.
@@ -3271,6 +3341,10 @@ def inyectar_en_html(indice, blobs, secciones_data=None, aulaplay_url=None):
     html = _link_posicion_sector(html)
     # Nuevo temario del Módulo 01 (Juan Pablo)
     html = _temario_modulo1(html)
+    # Mejorar usabilidad de los botones de descarga/enlace en Recursos
+    html = _mejorar_botones_descarga(html)
+    # Nuevo título del Módulo 02 (Johana)
+    html = _titulo_modulo2(html)
 
     # Escribir el HTML final sobre el mismo archivo (regenera en sitio).
     html_path.write_text(html, encoding="utf-8")
